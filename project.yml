@@ -17,7 +17,8 @@ settings:
     CODE_SIGN_STYLE: Automatic
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
-    TARGETED_DEVICE_FAMILY: "1"
+    # Native iPhone and iPad support.
+    TARGETED_DEVICE_FAMILY: "1,2"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     STRING_CATALOG_GENERATE_SYMBOLS: YES
 
@@ -48,10 +49,7 @@ targets:
         NSLocationWhenInUseUsageDescription: Drive Mode uses a low-power location session to stay active in the background so lyrics keep updating on CarPlay and the lock screen. Positions are discarded immediately and never leave the device.
         NSLocationAlwaysAndWhenInUseUsageDescription: Allowing "Always" lets the CarPlay automation start Drive Mode automatically when you get in the car. Positions are discarded immediately and never leave the device.
         UILaunchScreen: {}
-        # iPhone stays portrait-only. The complete ~ipad set satisfies
-        # Xcode's "all orientations" check without the deprecated
-        # UIRequiresFullScreen key (TN3192); this iPhone-only app runs on
-        # iPad only in compatibility mode, where that set never applies.
+        # iPhone stays portrait-only; iPad supports every orientation.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UISupportedInterfaceOrientations~ipad:
@@ -73,6 +71,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.mels.driveverse.widgets
+    info:
       path: DriveVerseWidgets/Info.plist
       properties:
         CFBundleDisplayName: DriveVerse Lyrics

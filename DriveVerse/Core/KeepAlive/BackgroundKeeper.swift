@@ -23,7 +23,7 @@ enum KeepAliveError: Error {
 /// would be rejected in App Review. Fine for a personally sideloaded build;
 /// a store build would need push-updated activities instead.
 final class BackgroundKeeper: NSObject, CLLocationManagerDelegate {
-    private static let log = Logger(subsystem: "com.praveetgupta.driveverse", category: "keepalive")
+    private static let log = Logger(subsystem: "io.github.mels.driveverse", category: "keepalive")
 
     private let manager = CLLocationManager()
     private var wantsRunning = false

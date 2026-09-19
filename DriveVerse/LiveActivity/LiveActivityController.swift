@@ -22,7 +22,7 @@ final class LiveActivityController {
     /// Track changes and play/pause flips always send immediately.
     static let minLineUpdateInterval: TimeInterval = 1.5
 
-    private static let log = Logger(subsystem: "com.praveetgupta.driveverse", category: "activity")
+    private static let log = Logger(subsystem: "io.github.mels.driveverse", category: "activity")
 
     private var activity: Activity<LyricsAttributes>?
     private var policy = LiveActivityUpdatePolicy()

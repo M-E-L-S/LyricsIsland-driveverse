@@ -9,10 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-26
-
-    env:
-      SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+    runs-on: xcode-27
 
     steps:
       - name: Checkout repository
@@ -30,7 +27,11 @@ jobs:
         run: |
           xcodegen generate
 
-      - name: Build unsigned iPhone app
+      - name: Run unit tests
+        run: |
+          ./scripts/test.sh
+
+      - name: Build unsigned iPhone and iPad app
         run: |
           set -euxo pipefail
 
@@ -46,7 +47,7 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build
 
-      - name: Verify app and widget extension
+      - name: Verify app and Live Activity extension
         run: |
           set -euxo pipefail
 
@@ -57,8 +58,14 @@ jobs:
           test -d \
             "$APP/PlugIns/DriveVerseWidgets.appex"
 
+          test "$(/usr/libexec/PlistBuddy -c 'Print :UIDeviceFamily:0' "$APP/Info.plist")" = "1"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :UIDeviceFamily:1' "$APP/Info.plist")" = "2"
+
+          test "$(/usr/libexec/PlistBuddy -c 'Print :NSSupportsLiveActivities' "$APP/Info.plist")" = "true"
+
           echo "App exists."
-          echo "Widget extension exists."
+          echo "Live Activity extension exists."
+          echo "Native iPhone and iPad support is enabled."
 
           echo "Embedded plug-ins:"
           find "$APP/PlugIns" -maxdepth 2 -type d -print

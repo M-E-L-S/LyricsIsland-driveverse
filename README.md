@@ -52,8 +52,8 @@ A few details worth knowing:
 
 ## Requirements
 
-- An iPhone running **iOS 26** (Apple Music detection and Live Activities need real hardware — the Simulator can't do it).
-- **Xcode 26** to build it.
+- An iPhone or iPad running **iOS 26 or later** (Apple Music detection and Live Activities need real hardware — the Simulator can't fully test them).
+- **Xcode 27** to build it locally.
 - A free or paid Apple Developer account to sign the app onto your phone.
 - A **Spotify** account only if you want Spotify support (Apple Music works without it).
 
@@ -62,11 +62,19 @@ A few details worth knowing:
 ### 1. Get the code and open it
 
 ```bash
-git clone https://github.com/praveetgupta/driveverse.git
-cd driveverse
+git clone https://github.com/M-E-L-S/LyricsIsland-driveverse.git
+cd LyricsIsland-driveverse
 ```
 
-The Xcode project is checked in, so you can open `DriveVerse.xcodeproj` directly. (If you ever change which files exist, regenerate it with `./scripts/generate.sh`, which needs `brew install xcodegen`.)
+`DriveVerse.xcodeproj` is generated from `project.yml` and is intentionally not checked in. On a Mac, install XcodeGen and generate it before opening the project:
+
+```bash
+brew install xcodegen
+./scripts/generate.sh
+open DriveVerse.xcodeproj
+```
+
+When working from Windows, push the source to GitHub instead. The included GitHub Actions workflow runs the unit tests with Xcode 27, generates the project, builds an unsigned iPhone/iPad app with its Live Activity extension, and uploads `DriveVerse-unsigned.ipa`. Download that artifact and sign it with AltStore.
 
 ### 2. Add your Spotify Client ID
 
@@ -86,17 +94,17 @@ If you *do* want Spotify:
 
 ### 3. Sign and run
 
-Open the project in Xcode, pick the **DriveVerse** scheme, and set your signing team on both the `DriveVerse` and `DriveVerseWidgets` targets (Signing & Capabilities tab). Plug in your iPhone and hit Run.
+For a local Mac build, open the generated project in Xcode, pick the **DriveVerse** scheme, and set your signing team on both the `DriveVerse` and `DriveVerseWidgets` targets (Signing & Capabilities tab). Plug in your iPhone or iPad and hit Run.
 
-**You'll need your own bundle identifier.** Bundle IDs are globally unique, and the one in this repo is already registered, so signing will fail with "cannot be registered to your development team" until you change it. Edit `project.yml` and replace `com.praveetgupta` with something of your own (the widget ID must stay a child of the app ID):
+The fork currently uses `io.github.mels.driveverse`. If signing reports that the identifier is unavailable to your team, edit `project.yml` and replace it with identifiers you control. The Live Activity extension identifier must remain a child of the app identifier:
 
 ```yaml
-bundleIdPrefix: com.yourname                             # options
-PRODUCT_BUNDLE_IDENTIFIER: com.yourname.driveverse       # DriveVerse target
+bundleIdPrefix: com.yourname                                 # options
+PRODUCT_BUNDLE_IDENTIFIER: com.yourname.driveverse           # DriveVerse target
 PRODUCT_BUNDLE_IDENTIFIER: com.yourname.driveverse.widgets   # DriveVerseWidgets target
 ```
 
-Then run `./scripts/generate.sh` to regenerate the project.
+Then regenerate the project or push the change and let GitHub Actions generate it.
 
 ### 4. First-launch permissions
 
@@ -139,7 +147,7 @@ Everything stays on your phone. There's no backend, no account, and no analytics
 
 ## Running the tests
 
-There's a full unit test suite (Swift Testing). In Xcode, press **Cmd-U**. From the command line:
+There's a full unit test suite (Swift Testing). GitHub Actions runs it before packaging the IPA. In Xcode, press **Cmd-U**. From a Mac command line:
 
 ```bash
 ./scripts/test.sh
