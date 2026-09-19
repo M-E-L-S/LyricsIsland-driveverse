@@ -1,8 +1,6 @@
 import SwiftUI
 
-/// Full-screen lyrics for passengers / parked use.
-/// Display-only by design: DriveVerse observes another app's playback and
-/// cannot seek, so there is no tap-to-scrub.
+/// Full-screen lyrics with word timing and basic Apple Music controls.
 struct LyricsScreen: View {
     @EnvironmentObject private var model: AppModel
 
@@ -18,6 +16,8 @@ struct LyricsScreen: View {
                 SyncedLyricsView(
                     lines: document.lines,
                     currentIndex: model.position?.lineIndex,
+                    playback: model.playbackAnchor ?? model.nowPlaying,
+                    timingOffsetMs: model.lyricsTimingOffsetMs,
                     options: model.lyricsDisplayOptions
                 )
             case .plain(let document):
@@ -39,6 +39,14 @@ struct LyricsScreen: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle(model.nowPlaying?.title ?? String(localized: "Lyrics"))
+        .safeAreaInset(edge: .bottom) {
+            if model.nowPlaying != nil {
+                PlaybackControlsView()
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial)
+            }
+        }
 #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
 #endif
@@ -67,6 +75,8 @@ struct LyricsScreen: View {
 struct SyncedLyricsView: View {
     let lines: [LyricsLine]
     let currentIndex: Int?
+    let playback: NowPlayingState?
+    let timingOffsetMs: Int
     let options: LyricsDisplayOptions
 
     var body: some View {
@@ -75,8 +85,20 @@ struct SyncedLyricsView: View {
                 LazyVStack(alignment: .leading, spacing: 20) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                         VStack(alignment: .leading, spacing: 5) {
-                            Text(LyricsTextRenderer.primary(for: line, options: options))
-                                .font(index == currentIndex ? .title2.bold() : .title3)
+                            if index == currentIndex,
+                               line.words?.isEmpty == false,
+                               let playback {
+                                WordTimedText(
+                                    line: line,
+                                    playback: playback,
+                                    timingOffsetMs: timingOffsetMs,
+                                    options: options
+                                )
+                                .font(.title2.bold())
+                            } else {
+                                Text(LyricsTextRenderer.primary(for: line, options: options))
+                                    .font(index == currentIndex ? .title2.bold() : .title3)
+                            }
                             if let secondary = LyricsTextRenderer.secondary(for: line, options: options) {
                                 Text(secondary)
                                     .font(index == currentIndex ? .body : .callout)

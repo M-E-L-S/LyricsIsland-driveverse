@@ -203,13 +203,13 @@ import Testing
         #expect(evaluation.isPerfect)
     }
 
-    @Test func allMetadataMismatchRetriesWithTitleOnlyAndKeepsQualityRanking() async throws {
+    @Test func titleMismatchRetriesWithTitleOnlyAndKeepsQualityRanking() async throws {
         let unrelated = LyricsCandidate(
             identifier: "unrelated",
             source: .kugou,
             title: "Wrong Song",
-            artists: ["Wrong Artist"],
-            album: "Wrong Album",
+            artists: ["Artist"],
+            album: "Album",
             durationMs: 200_000
         )
         let titleOnlyWithoutTranslation = LyricsCandidate(
@@ -265,8 +265,8 @@ import Testing
             identifier: "unrelated",
             source: .kugou,
             title: "Wrong Song",
-            artists: ["Wrong Artist"],
-            album: "Wrong Album",
+            artists: ["Artist"],
+            album: "Album",
             durationMs: 200_000
         )
         let stillUnrelated = LyricsCandidate(

@@ -20,9 +20,9 @@ struct LyricsSearchQuery: Equatable {
         self.durationMs = durationMs
     }
 
-    /// Used only after a full-metadata search selects a candidate whose title,
-    /// artist, and album all mismatch. Providers then search with the title
-    /// alone, while duration and lyric-quality requirements remain unchanged.
+    /// Used after a full-metadata search fails to match the title. Providers
+    /// then search with the title alone, while duration and lyric-quality
+    /// requirements remain unchanged.
     func titleOnly() -> Self {
         Self(title: title, artists: [], album: nil, durationMs: durationMs)
     }
@@ -166,9 +166,7 @@ struct LyricsSearchEngine {
             secondaryRequirement: secondaryRequirement
         )
         guard let evaluation = primary.selectedEvaluation,
-              !evaluation.titleMatches,
-              !evaluation.artistsMatch,
-              !evaluation.albumMatches else {
+              !evaluation.titleMatches else {
             return primary.outcome
         }
 

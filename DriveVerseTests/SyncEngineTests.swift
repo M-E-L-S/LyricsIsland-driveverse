@@ -8,13 +8,15 @@ private func line(
     _ start: Int,
     _ original: String,
     end: Int? = nil,
-    translation: String? = nil
+    translation: String? = nil,
+    words: [LyricWordTiming]? = nil
 ) -> LyricsLine {
     LyricsLine(
         startTimeMs: start,
         endTimeMs: end,
         original: original,
-        translation: translation
+        translation: translation,
+        words: words
     )
 }
 
@@ -186,6 +188,27 @@ private func state(
         )
         #expect(position.currentLine == "two")
         #expect(position.currentSecondaryLine == nil)
+    }
+
+    @Test func positionCarriesCurrentWordTimingAndOffsetClock() {
+        let timed = line(
+            10_000,
+            "你好",
+            end: 11_000,
+            words: [
+                LyricWordTiming(startTimeMs: 10_000, endTimeMs: 10_400, original: "你"),
+                LyricWordTiming(startTimeMs: 10_400, endTimeMs: 11_000, original: "好"),
+            ]
+        )
+        let position = SyncEngine.position(
+            atMs: 11_000,
+            lines: [timed],
+            durationMs: 240_000,
+            isPlaying: true,
+            offsetMs: 1_000
+        )
+        #expect(position.lyricPositionMs == 10_000)
+        #expect(position.currentWords?.map(\.original) == ["你", "好"])
     }
 
     @Test func nilStateClearsPosition() {

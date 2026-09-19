@@ -69,9 +69,12 @@ targets:
     sources:
       - path: DriveVerseWidgets
       - path: DriveVerse/LiveActivity/LyricsAttributes.swift
+      - path: DriveVerse/LiveActivity/PlaybackIntents.swift
+      - path: DriveVerse/Resources/Localizable.xcstrings
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.mels.driveverse.widgets
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) WIDGET_EXTENSION"
     info:
       path: DriveVerseWidgets/Info.plist
       properties:

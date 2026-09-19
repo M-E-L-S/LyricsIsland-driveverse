@@ -12,9 +12,7 @@
 
 <p align="center"><em>Lyrics advancing live on the lock screen. The same Live Activity mirrors onto CarPlay on iOS 26. (<a href="assets/demo.mp4">watch the clip</a>)</em></p>
 
-DriveVerse watches the song playing in Apple Music, finds the synced lyrics for it, and shows the current line (plus the one coming up) right on your CarPlay display, lock screen, and Dynamic Island. You keep using Apple Music exactly as usual. DriveVerse just rides along and puts the words on screen.
-
-It doesn't play any music of its own, it isn't a full CarPlay app, and it never touches your playback. It only reads what's playing and shows the lyrics.
+DriveVerse watches the song playing in Apple Music, finds the synced lyrics for it, and shows the current line (plus the one coming up) right on your CarPlay display, lock screen, and Dynamic Island. It also provides basic play/pause, previous/next, and seek controls while Apple Music remains the player.
 
 Lyrics always keep their original script. When available, translations appear underneath; optional on-device transliteration can be enabled in Settings without modifying the stored original.
 
@@ -30,6 +28,7 @@ Lyrics always keep their original script. When available, translations appear un
 - **Preserves original lyrics** with optional translation, transliteration, Simplified/Traditional Chinese conversion, and timing offset controls.
 - **Keeps working while you drive** through a "Drive Mode" that stops iOS from freezing the app in your pocket.
 - **A full-screen scrolling lyrics view** in the app itself, for passengers or when you're parked.
+- **Karaoke-style word highlighting and playback controls** in the app, expanded Dynamic Island, and lock-screen Live Activity.
 - **Follows the system language** with Simplified Chinese, Traditional Chinese, and English fallback.
 
 No account to make, no server, no analytics, no tracking. Everything happens on your phone.
@@ -140,7 +139,7 @@ It covers Apple Music state mapping, KRC/YRC/LRC parsing, bilingual word timing,
 ## Good to know / limitations
 
 - Without Drive Mode on, updates stop shortly after the app goes to the background. That's expected — Drive Mode is the fix.
-- DriveVerse can't control playback (it's just watching), so the lyrics view is display-only by design.
+- Live Activities support buttons rather than a draggable slider, so their seek controls jump backward or forward by 15 seconds; the app itself provides a draggable timeline.
 - If none of the three sources has a usable match, you'll see "No lyrics found." Misses are re-checked the next day; hits are cached.
 - Kugou and NetEase are unofficial interfaces and may change or limit results by region. A failed source is skipped automatically.
 - Optional transliteration uses the standard system transform, which is readable but occasionally a little literal.
