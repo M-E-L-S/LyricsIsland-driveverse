@@ -1,0 +1,93 @@
+name: Build DriveVerse IPA
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: macos-26
+
+    env:
+      SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: |
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: |
+          brew install xcodegen
+
+      - name: Generate Xcode project
+        run: |
+          xcodegen generate
+
+      - name: Build unsigned iPhone app
+        run: |
+          set -euxo pipefail
+
+          xcodebuild \
+            -project DriveVerse.xcodeproj \
+            -scheme DriveVerse \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Verify app and widget extension
+        run: |
+          set -euxo pipefail
+
+          APP="build/Build/Products/Release-iphoneos/DriveVerse.app"
+
+          test -d "$APP"
+
+          test -d \
+            "$APP/PlugIns/DriveVerseWidgets.appex"
+
+          echo "App exists."
+          echo "Widget extension exists."
+
+          echo "Embedded plug-ins:"
+          find "$APP/PlugIns" -maxdepth 2 -type d -print
+
+      - name: Package unsigned IPA
+        run: |
+          set -euxo pipefail
+
+          APP="build/Build/Products/Release-iphoneos/DriveVerse.app"
+
+          rm -rf Payload
+          rm -f DriveVerse-unsigned.ipa
+
+          mkdir Payload
+          cp -R "$APP" Payload/
+
+          /usr/bin/zip \
+            -qry \
+            DriveVerse-unsigned.ipa \
+            Payload
+
+          echo "Checking IPA..."
+
+          unzip -l DriveVerse-unsigned.ipa \
+            | grep DriveVerseWidgets.appex
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: DriveVerse-IPA
+          path: DriveVerse-unsigned.ipa
+          retention-days: 14

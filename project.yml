@@ -1,6 +1,6 @@
 name: DriveVerse
 options:
-  bundleIdPrefix: com.praveetgupta
+  bundleIdPrefix: io.github.mels
   deploymentTarget:
     iOS: "26.0"
   createIntermediateGroups: true
@@ -29,7 +29,7 @@ targets:
       - path: DriveVerse
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.praveetgupta.driveverse
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.mels.driveverse
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
     info:
@@ -47,9 +47,6 @@ targets:
         UIBackgroundModes: [location]
         NSLocationWhenInUseUsageDescription: Drive Mode uses a low-power location session to stay active in the background so lyrics keep updating on CarPlay and the lock screen. Positions are discarded immediately and never leave the device.
         NSLocationAlwaysAndWhenInUseUsageDescription: Allowing "Always" lets the CarPlay automation start Drive Mode automatically when you get in the car. Positions are discarded immediately and never leave the device.
-        CFBundleURLTypes:
-          - CFBundleURLName: com.praveetgupta.driveverse.auth
-            CFBundleURLSchemes: [driveverse]
         UILaunchScreen: {}
         # iPhone stays portrait-only. The complete ~ipad set satisfies
         # Xcode's "all orientations" check without the deprecated
@@ -75,8 +72,7 @@ targets:
       - path: DriveVerse/LiveActivity/LyricsAttributes.swift
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.praveetgupta.driveverse.widgets
-    info:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.mels.driveverse.widgets
       path: DriveVerseWidgets/Info.plist
       properties:
         CFBundleDisplayName: DriveVerse Lyrics
