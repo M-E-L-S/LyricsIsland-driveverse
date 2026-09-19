@@ -12,6 +12,20 @@ struct LyricsSearchQuery: Equatable {
         self.album = album
         self.durationMs = durationMs
     }
+
+    private init(title: String, artists: [String], album: String?, durationMs: Int?) {
+        self.title = title
+        self.artists = artists
+        self.album = album
+        self.durationMs = durationMs
+    }
+
+    /// Used only after a full-metadata search selects a candidate whose title,
+    /// artist, and album all mismatch. Providers then search with the title
+    /// alone, while duration and lyric-quality requirements remain unchanged.
+    func titleOnly() -> Self {
+        Self(title: title, artists: [], album: nil, durationMs: durationMs)
+    }
 }
 
 struct LyricsCandidate: Equatable {
@@ -147,6 +161,46 @@ struct LyricsSearchEngine {
         query: LyricsSearchQuery,
         secondaryRequirement: LyricsSecondaryRequirement
     ) async throws -> LyricsSearchOutcome {
+        let primary = try await searchOnce(
+            query: query,
+            secondaryRequirement: secondaryRequirement
+        )
+        guard let evaluation = primary.selectedEvaluation,
+              !evaluation.titleMatches,
+              !evaluation.artistsMatch,
+              !evaluation.albumMatches else {
+            return primary.outcome
+        }
+
+        let titleOnly = try await searchOnce(
+            query: query.titleOnly(),
+            secondaryRequirement: secondaryRequirement
+        )
+        let attempts = primary.outcome.attempts + titleOnly.outcome.attempts
+        switch titleOnly.outcome.content {
+        case .document(_):
+            // Search APIs can return fuzzy results even for a title-only query.
+            // Never replace one unrelated lyric with another unrelated lyric.
+            guard titleOnly.selectedEvaluation?.titleMatches == true else {
+                return LyricsSearchOutcome(content: .notFound, attempts: attempts)
+            }
+            return LyricsSearchOutcome(content: titleOnly.outcome.content, attempts: attempts)
+        case .instrumental:
+            return LyricsSearchOutcome(content: .instrumental, attempts: attempts)
+        case .notFound:
+            return LyricsSearchOutcome(content: .notFound, attempts: attempts)
+        }
+    }
+
+    private struct SearchPass {
+        let outcome: LyricsSearchOutcome
+        let selectedEvaluation: LyricsMatchEvaluation?
+    }
+
+    private func searchOnce(
+        query: LyricsSearchQuery,
+        secondaryRequirement: LyricsSecondaryRequirement
+    ) async throws -> SearchPass {
         var best: LyricsMatch?
         var attempts: [LyricsSearchAttempt] = []
         var failedProviderCount = 0
@@ -203,7 +257,10 @@ struct LyricsSearchEngine {
                             evaluation: evaluation
                         )
                         if evaluation.isPerfect {
-                            return LyricsSearchOutcome(content: content, attempts: attempts)
+                            return SearchPass(
+                                outcome: LyricsSearchOutcome(content: content, attempts: attempts),
+                                selectedEvaluation: evaluation
+                            )
                         }
                         if best == nil || best!.evaluation < evaluation {
                             best = match
@@ -241,15 +298,24 @@ struct LyricsSearchEngine {
         }
 
         if let best {
-            return LyricsSearchOutcome(content: best.content, attempts: attempts)
+            return SearchPass(
+                outcome: LyricsSearchOutcome(content: best.content, attempts: attempts),
+                selectedEvaluation: best.evaluation
+            )
         }
         if foundInstrumental {
-            return LyricsSearchOutcome(content: .instrumental, attempts: attempts)
+            return SearchPass(
+                outcome: LyricsSearchOutcome(content: .instrumental, attempts: attempts),
+                selectedEvaluation: nil
+            )
         }
         if !providers.isEmpty, failedProviderCount == providers.count {
             throw LyricsSearchError.allProvidersFailed
         }
-        return LyricsSearchOutcome(content: .notFound, attempts: attempts)
+        return SearchPass(
+            outcome: LyricsSearchOutcome(content: .notFound, attempts: attempts),
+            selectedEvaluation: nil
+        )
     }
 
     static func evaluate(

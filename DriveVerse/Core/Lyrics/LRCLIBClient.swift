@@ -86,10 +86,10 @@ struct LRCLIBClient {
     }
 
     func search(track: String, artist: String) async throws -> [LRCLIBResponse] {
-        let items = [
-            URLQueryItem(name: "track_name", value: track),
-            URLQueryItem(name: "artist_name", value: artist),
-        ]
+        var items = [URLQueryItem(name: "track_name", value: track)]
+        if !artist.isEmpty {
+            items.append(URLQueryItem(name: "artist_name", value: artist))
+        }
         guard let data = try await perform(path: "/api/search", queryItems: items) else { return [] }
         return try JSONDecoder().decode([LRCLIBResponse].self, from: data)
     }

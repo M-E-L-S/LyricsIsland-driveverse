@@ -203,6 +203,98 @@ import Testing
         #expect(evaluation.isPerfect)
     }
 
+    @Test func allMetadataMismatchRetriesWithTitleOnlyAndKeepsQualityRanking() async throws {
+        let unrelated = LyricsCandidate(
+            identifier: "unrelated",
+            source: .kugou,
+            title: "Wrong Song",
+            artists: ["Wrong Artist"],
+            album: "Wrong Album",
+            durationMs: 200_000
+        )
+        let titleOnlyWithoutTranslation = LyricsCandidate(
+            identifier: "title-only-incomplete",
+            source: .kugou,
+            title: "Song",
+            artists: ["Platform Artist"],
+            album: "Platform Album",
+            durationMs: 200_000
+        )
+        let titleOnlyPerfect = LyricsCandidate(
+            identifier: "title-only-perfect",
+            source: .kugou,
+            title: "Song",
+            artists: ["Platform Artist"],
+            album: "Platform Album",
+            durationMs: 200_000
+        )
+        let provider = TitleFallbackLyricsProvider(
+            primaryCandidates: [unrelated],
+            titleOnlyCandidates: [titleOnlyWithoutTranslation, titleOnlyPerfect],
+            contents: [
+                "unrelated": document(source: .kugou, translation: "Wrong", wordSynced: true),
+                "title-only-incomplete": document(source: .kugou, translation: nil, wordSynced: true),
+                "title-only-perfect": document(source: .kugou, translation: "Hello", wordSynced: true),
+            ]
+        )
+
+        let outcome = try await LyricsSearchEngine(providers: [provider]).search(
+            query: query,
+            secondaryRequirement: .translation
+        )
+
+        #expect(provider.queries.count == 2)
+        #expect(provider.queries.first?.artists == ["artist"])
+        #expect(provider.queries.first?.album == "Album")
+        #expect(provider.queries.last?.artists.isEmpty == true)
+        #expect(provider.queries.last?.album == nil)
+        #expect(provider.queries.last?.durationMs == 200_000)
+        #expect(provider.fetchedIDs == [
+            "unrelated", "title-only-incomplete", "title-only-perfect",
+        ])
+        #expect(outcome.attempts.last?.candidateID == "title-only-perfect")
+        guard case .document(let selected) = outcome.content else {
+            Issue.record("expected title-only fallback document")
+            return
+        }
+        #expect(selected.lines.first?.translation == "Hello")
+    }
+
+    @Test func titleOnlyFallbackRejectsAnotherFuzzyTitleMismatch() async throws {
+        let unrelated = LyricsCandidate(
+            identifier: "unrelated",
+            source: .kugou,
+            title: "Wrong Song",
+            artists: ["Wrong Artist"],
+            album: "Wrong Album",
+            durationMs: 200_000
+        )
+        let stillUnrelated = LyricsCandidate(
+            identifier: "still-unrelated",
+            source: .kugou,
+            title: "Another Wrong Song",
+            artists: ["Platform Artist"],
+            album: "Platform Album",
+            durationMs: 200_000
+        )
+        let provider = TitleFallbackLyricsProvider(
+            primaryCandidates: [unrelated],
+            titleOnlyCandidates: [stillUnrelated],
+            contents: [
+                "unrelated": document(source: .kugou, translation: "Wrong", wordSynced: true),
+                "still-unrelated": document(source: .kugou, translation: "Wrong", wordSynced: true),
+            ]
+        )
+
+        let outcome = try await LyricsSearchEngine(providers: [provider]).search(
+            query: query,
+            secondaryRequirement: .translation
+        )
+
+        #expect(provider.queries.count == 2)
+        #expect(outcome.content == .notFound)
+    }
+
     private var query: LyricsSearchQuery {
         LyricsSearchQuery(title: "Song", artist: "Artist", album: "Album", durationMs: 200_000)
     }
@@ -263,6 +355,35 @@ private final class FakeLyricsProvider: LyricsProvider {
     func search(for query: LyricsSearchQuery, limit: Int) async throws -> [LyricsCandidate] {
         searchCount += 1
         return candidates
+    }
+
+    func lyrics(for candidate: LyricsCandidate) async throws -> LyricsContent {
+        fetchedIDs.append(candidate.identifier)
+        return contents[candidate.identifier] ?? .notFound
+    }
+}
+
+private final class TitleFallbackLyricsProvider: LyricsProvider {
+    let source: LyricsSource = .kugou
+    let primaryCandidates: [LyricsCandidate]
+    let titleOnlyCandidates: [LyricsCandidate]
+    let contents: [String: LyricsContent]
+    private(set) var queries: [LyricsSearchQuery] = []
+    private(set) var fetchedIDs: [String] = []
+
+    init(
+        primaryCandidates: [LyricsCandidate],
+        titleOnlyCandidates: [LyricsCandidate],
+        contents: [String: LyricsContent]
+    ) {
+        self.primaryCandidates = primaryCandidates
+        self.titleOnlyCandidates = titleOnlyCandidates
+        self.contents = contents
+    }
+
+    func search(for query: LyricsSearchQuery, limit: Int) async throws -> [LyricsCandidate] {
+        queries.append(query)
+        return query.artists.isEmpty ? titleOnlyCandidates : primaryCandidates
     }
 
     func lyrics(for candidate: LyricsCandidate) async throws -> LyricsContent {

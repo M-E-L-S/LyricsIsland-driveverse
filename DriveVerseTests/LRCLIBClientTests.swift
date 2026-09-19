@@ -196,6 +196,39 @@ extension HTTPStubbedTests {
 }
 
 @Suite struct MultiProviderClientTests {
+    @Test func titleOnlyQueriesDoNotSendCustomizedArtistOrAlbum() async throws {
+        let query = LyricsSearchQuery(
+            title: "Song", artist: "Custom Artist", album: "Custom Album", durationMs: 200_000
+        ).titleOnly()
+
+        StubURLProtocol.reset { _ in (200, json("{\"candidates\":[]}")) }
+        let kugou = KugouLyricsProvider(
+            session: StubURLProtocol.makeSession(),
+            searchBaseURL: URL(string: "https://stub.invalid")!,
+            lyricsBaseURL: URL(string: "https://stub.invalid")!
+        )
+        _ = try await kugou.search(for: query, limit: 3)
+        #expect(queryValue(StubURLProtocol.requests[0], "keyword") == "Song")
+
+        StubURLProtocol.reset { _ in (200, json("{\"result\":{\"songs\":[]}}")) }
+        let netease = NeteaseLyricsProvider(
+            session: StubURLProtocol.makeSession(),
+            baseURL: URL(string: "https://stub.invalid")!
+        )
+        _ = try await netease.search(for: query, limit: 3)
+        #expect(queryValue(StubURLProtocol.requests[0], "s") == "Song")
+
+        StubURLProtocol.reset { _ in (200, json("[]")) }
+        let lrclib = LRCLIBProvider(client: LRCLIBClient(
+            session: StubURLProtocol.makeSession(),
+            baseURL: URL(string: "https://stub.invalid")!
+        ))
+        _ = try await lrclib.search(for: query, limit: 3)
+        #expect(queryValue(StubURLProtocol.requests[0], "track_name") == "song")
+        #expect(queryValue(StubURLProtocol.requests[0], "artist_name") == nil)
+        #expect(queryValue(StubURLProtocol.requests[0], "album_name") == nil)
+    }
+
     @Test func kugouSearchReturnsMultipleTrackCandidates() async throws {
         StubURLProtocol.reset { request in
             guard request.url?.path == "/search" else { return (404, Data()) }
