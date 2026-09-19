@@ -34,9 +34,6 @@ final class LiveActivityController {
     private var lastSentTrackKey: String?
     private var lastSentIsPlaying: Bool?
 
-    /// Drive Mode's keep-alive only runs while an activity is actually up.
-    var isActive: Bool { activity != nil }
-
     /// While Drive Mode is on the session must survive arbitrary pauses:
     /// hold the activity (pause glyph) instead of ending it after the grace
     /// period, because a fresh start would need the foreground.
@@ -128,7 +125,7 @@ final class LiveActivityController {
         guard activity == nil, ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         let content = state.map { Self.content(state: $0, position: position) }
             ?? LyricsAttributes.ContentState(
-                title: "DriveVerse", artist: "", sourceName: "",
+                title: "DriveVerse", artist: "",
                 currentLine: "♪ Waiting for music…", nextLine: "",
                 progress: 0, isPlaying: false
             )
@@ -206,14 +203,13 @@ final class LiveActivityController {
     }
 
     private static func key(for state: NowPlayingState) -> String {
-        "\(state.title)|\(state.artist)|\(state.source.rawValue)"
+        "\(state.title)|\(state.artist)"
     }
 
     private static func content(state: NowPlayingState, position: LyricsPosition?) -> LyricsAttributes.ContentState {
         LyricsAttributes.ContentState(
             title: state.title,
             artist: state.artist,
-            sourceName: state.source.displayName,
             currentLine: position?.currentLine ?? "♪ \(state.title)",
             nextLine: position?.nextLine ?? "",
             progress: position?.trackProgress ?? 0,

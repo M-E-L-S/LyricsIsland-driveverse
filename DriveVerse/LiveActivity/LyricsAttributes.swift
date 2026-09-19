@@ -13,7 +13,6 @@ struct LyricsAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
         var title: String
         var artist: String
-        var sourceName: String
         var currentLine: String
         var nextLine: String
         /// 0–1 progress through the whole track.

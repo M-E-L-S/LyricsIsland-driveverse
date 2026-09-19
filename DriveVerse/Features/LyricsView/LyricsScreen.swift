@@ -11,7 +11,7 @@ struct LyricsScreen: View {
             switch model.lyricsState {
             case .idle:
                 placeholder(symbol: "music.note", title: "Nothing playing",
-                            detail: "Start a song in Apple Music or Spotify.")
+                            detail: "Start a song in Apple Music.")
             case .loading:
                 ProgressView("Finding lyrics…")
             case .synced(let lines):

@@ -14,7 +14,7 @@ struct StartDriveModeIntent: LiveActivityIntent {
     func perform() async throws -> some IntentResult {
         let model = await AppModel.shared
         await model.startDriveSession()
-        // Hold the intent open so the first player/Spotify read flows through
+        // Hold the intent open so the first Apple Music read flows through
         // the pipeline while the LiveActivityIntent grant is in effect.
         try? await Task.sleep(for: .seconds(3))
         return .result()

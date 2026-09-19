@@ -9,13 +9,12 @@ private func state(
     positionMs: Int,
     isPlaying: Bool = true,
     durationMs: Int? = 240_000,
-    capturedAt: Date = t0,
-    source: MusicSource = .spotify
+    capturedAt: Date = t0
 ) -> NowPlayingState {
     NowPlayingState(
         title: title, artist: "Artist", album: nil,
         durationMs: durationMs, positionMs: positionMs,
-        isPlaying: isPlaying, source: source, capturedAt: capturedAt
+        isPlaying: isPlaying, capturedAt: capturedAt
     )
 }
 
@@ -76,7 +75,7 @@ private func state(
         let engine = SyncEngine(now: { fakeNow })
         engine.apply(state(positionMs: 10_000, capturedAt: t0))
 
-        // 1 s later Spotify reports 10.5 s where we extrapolate 11 s — jitter, ignore.
+        // 1 s later Apple Music reports 10.5 s where we extrapolate 11 s — jitter, ignore.
         fakeNow = t0.addingTimeInterval(1)
         engine.apply(state(positionMs: 10_500, capturedAt: fakeNow))
         #expect(engine.anchor?.positionMs == 10_000)

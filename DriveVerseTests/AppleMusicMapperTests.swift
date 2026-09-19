@@ -6,7 +6,7 @@ import Foundation
     private let at = Date(timeIntervalSinceReferenceDate: 750_000_000)
 
     @Test func nilSnapshotMapsToNil() {
-        // No now-playing item — e.g. Spotify is the app that's playing.
+        // No now-playing item is available from Apple Music.
         #expect(AppleMusicStateMapper.state(from: nil, capturedAt: at) == nil)
     }
 
@@ -27,7 +27,7 @@ import Foundation
         #expect(state == NowPlayingState(
             title: "Karma Police", artist: "Radiohead", album: "OK Computer",
             durationMs: 261_500, positionMs: 42_250,
-            isPlaying: true, source: .appleMusic, capturedAt: at
+            isPlaying: true, capturedAt: at
         ))
     }
 

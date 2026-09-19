@@ -7,9 +7,6 @@ xcuserdata/
 DerivedData/
 *.xcresult
 
-# Secrets — never commit the real Spotify client ID (see Secrets.example.plist)
-DriveVerse/Resources/Secrets.plist
-
 # macOS
 .DS_Store
 

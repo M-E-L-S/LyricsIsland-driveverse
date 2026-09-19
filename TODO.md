@@ -10,22 +10,22 @@
 - [x] 启用原生 iPad：`TARGETED_DEVICE_FAMILY = "1,2"`。
 - [x] 更新 README，使其与实际的 XcodeGen/Actions 流程一致。
 
-验收：Actions 在 Xcode 27 下测试、构建、验证 Live Activity Extension，并输出可侧载 IPA。
+验收：✅ Actions 在 Xcode 27 下测试、构建并输出可侧载 IPA；iPhone 17 / iPad 10 真机测试通过。
 
 ### P1 — 彻底删除 Spotify
 
-- [ ] 删除 `SpotifyAuth.swift`、`SpotifySource.swift`。
-- [ ] 删除 Spotify Keychain、PKCE、Secrets.plist 和 URL Scheme。
-- [ ] 删除 `SpotifyAuthTests.swift`、`SpotifySourceTests.swift`。
-- [ ] 删除 Actions 中的 `SPOTIFY_CLIENT_ID`。
-- [ ] 删除首页 Spotify 登录区域。
-- [ ] 删除设置中的 Spotify 轮询间隔。
-- [ ] 删除播放来源选择、Spotify source badge 等状态。
-- [ ] 简化 `NowPlayingCoordinator`；评估直接删除它，让 `AppModel` 只订阅 `AppleMusicSource`。
-- [ ] 精简 `MusicSource`、`SourcePin` 和 Live Activity 中的 `sourceName`。
-- [ ] 更新 README 和代码注释。
+- [x] 删除 `SpotifyAuth.swift`、`SpotifySource.swift`。
+- [x] 删除 Spotify Keychain、PKCE、Secrets.plist 和 URL Scheme。
+- [x] 删除 `SpotifyAuthTests.swift`、`SpotifySourceTests.swift`、`CoordinatorTests.swift`。
+- [x] 删除 Actions 中的 `SPOTIFY_CLIENT_ID`。
+- [x] 删除首页 Spotify 登录区域。
+- [x] 删除设置中的 Spotify 轮询间隔。
+- [x] 删除播放来源选择、Spotify source badge 等状态。
+- [x] 删除 `NowPlayingCoordinator`，让 `AppModel` 只订阅 `AppleMusicSource`。
+- [x] 删除 `MusicSource`、`SourcePin` 和 Live Activity 中的 `sourceName`。
+- [x] 更新 README 和代码注释。
 
-验收：仓库中不再存在 Spotify、Client ID、OAuth、Spotify Web API 相关代码和文案。
+验收：✅ 源代码、测试、配置和用户文档中不再存在 Spotify、Client ID、OAuth、Spotify Web API 相关实现或文案（本 TODO 的历史记录除外）。
 
 ### P2 — 完整系统语言本地化
 

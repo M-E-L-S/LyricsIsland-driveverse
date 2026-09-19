@@ -22,7 +22,7 @@ enum LyricsMatcher {
     }
 
     /// Cache key for a track. Duration is bucketed to 5 s so slightly different
-    /// reports of the same track (Apple Music vs Spotify) usually collide.
+    /// reports of the same track usually share one cache entry.
     static func signature(title: String, artist: String, durationMs: Int?) -> String {
         let bucket = durationMs.map { Int((Double($0) / 5000.0).rounded()) } ?? -1
         return "\(normalizeTitle(title))|\(normalizeArtist(artist))|\(bucket)"

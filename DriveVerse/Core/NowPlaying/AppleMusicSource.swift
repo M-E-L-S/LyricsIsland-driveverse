@@ -32,7 +32,6 @@ enum AppleMusicStateMapper {
             durationMs: durationMs,
             positionMs: positionMs,
             isPlaying: snapshot.isPlaying,
-            source: .appleMusic,
             capturedAt: capturedAt
         )
     }
@@ -42,10 +41,10 @@ enum AppleMusicStateMapper {
 import MediaPlayer
 
 /// Observes the system (Apple Music) player via the MediaPlayer framework.
-/// Zero-latency and exact-position, so the coordinator prefers it when playing.
-/// Emits nil when Apple Music has no now-playing item (e.g. Spotify is the
-/// one playing). No MusicKit, no developer token — per CLAUDE.md §2.2.
-final class AppleMusicSource: NowPlayingSource {
+/// Provides local playback state with exact position and no polling delay.
+/// Emits nil when Apple Music has no now-playing item. No MusicKit or
+/// developer token is required for playback observation.
+final class AppleMusicSource {
     private let player = MPMusicPlayerController.systemMusicPlayer
     private let subject = CurrentValueSubject<NowPlayingState?, Never>(nil)
     let authStatusSubject = CurrentValueSubject<MediaAuthStatus, Never>(.unknown)

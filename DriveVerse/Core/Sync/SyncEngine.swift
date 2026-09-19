@@ -13,8 +13,8 @@ struct LyricsPosition: Equatable {
     let isPlaying: Bool
 }
 
-/// Extrapolates playback position between source reports (Spotify only polls
-/// every ~5 s) and maps the position to the current LRC line index.
+/// Extrapolates playback position between Apple Music reports and maps the
+/// position to the current LRC line index.
 /// The clock is injected so every code path is unit-testable.
 final class SyncEngine {
     static let seekThresholdMs = 2000

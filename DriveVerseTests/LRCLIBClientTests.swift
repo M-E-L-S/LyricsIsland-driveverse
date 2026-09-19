@@ -166,7 +166,7 @@ extension HTTPStubbedTests {
         let state = NowPlayingState(
             title: "Song", artist: "Artist", album: "Album",
             durationMs: 200_000, positionMs: 0,
-            isPlaying: true, source: .spotify, capturedAt: Date()
+            isPlaying: true, capturedAt: Date()
         )
 
         let first = try await service.lyrics(for: state)

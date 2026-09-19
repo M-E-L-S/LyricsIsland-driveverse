@@ -15,17 +15,13 @@ enum LyricsDisplayState: Equatable {
     case failed
 }
 
-/// Central wiring: sources → coordinator → sync engine → lyrics → UI
-/// and Live Activity. (Drive Mode keep-alive is added in Phase 7.)
+/// Central wiring: Apple Music → sync engine → lyrics → UI and Live Activity.
 @MainActor
 final class AppModel: ObservableObject {
     /// Single shared instance: the SwiftUI scene and the Drive Mode App
     /// Intents (which can launch the process in the background) must drive
     /// the same pipeline.
     static let shared = AppModel()
-
-    static let pollIntervalKey = "spotifyPollInterval"
-    static let sourcePinKey = "sourcePin"
 
     private static let log = Logger(subsystem: "io.github.mels.driveverse", category: "pipeline")
 
@@ -35,8 +31,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var lyricsState: LyricsDisplayState = .idle
     @Published private(set) var position: LyricsPosition?
     @Published private(set) var appleMusicAuth: MediaAuthStatus = .unknown
-    @Published private(set) var spotifyConnected = false
-    @Published private(set) var spotifyNeedsReconnect = false
     @Published var errorMessage: String?
     @Published var driveMode = false {
         didSet {
@@ -55,25 +49,13 @@ final class AppModel: ObservableObject {
         }
     }
 
-    var sourcePin: SourcePin {
-        get { coordinator.pin }
-        set {
-            objectWillChange.send()
-            coordinator.pin = newValue
-            UserDefaults.standard.set(newValue.rawValue, forKey: Self.sourcePinKey)
-        }
-    }
-
     // MARK: Pipeline
 
-    let spotifyAuth: SpotifyAuth
-    private let spotifySource: SpotifySource
 #if os(iOS)
     private let appleSource: AppleMusicSource
     private let liveActivity = LiveActivityController()
     private let backgroundKeeper = BackgroundKeeper()
 #endif
-    private let coordinator: NowPlayingCoordinator
     private let syncEngine = SyncEngine()
     private let lyricsService = LyricsService()
 
@@ -83,15 +65,6 @@ final class AppModel: ObservableObject {
     private var started = false
 
     init() {
-        let auth = SpotifyAuth()
-        spotifyAuth = auth
-        let spotify = SpotifySource(tokenProvider: auth)
-        spotify.activeInterval = {
-            let value = UserDefaults.standard.double(forKey: Self.pollIntervalKey)
-            return (3...10).contains(value) ? value : SpotifySource.defaultActiveInterval
-        }
-        spotifySource = spotify
-
         let applePublisher: AnyPublisher<NowPlayingState?, Never>
 #if os(iOS)
         let apple = AppleMusicSource()
@@ -101,14 +74,7 @@ final class AppModel: ObservableObject {
         applePublisher = Just<NowPlayingState?>(nil).eraseToAnyPublisher()
 #endif
 
-        let savedPin = UserDefaults.standard.string(forKey: Self.sourcePinKey)
-        coordinator = NowPlayingCoordinator(
-            applePublisher: applePublisher,
-            spotifyPublisher: spotify.statePublisher,
-            pin: savedPin.flatMap(SourcePin.init(rawValue:)) ?? .auto
-        )
-
-        wire()
+        wire(nowPlayingPublisher: applePublisher)
 
 #if os(iOS)
         backgroundKeeper.onIssue = { [weak self] message in
@@ -126,20 +92,18 @@ final class AppModel: ObservableObject {
 #if os(iOS)
         appleSource.start()
 #endif
-        spotifySource.start()
         syncEngine.startTicking()
     }
 
     /// Called when the scene returns to .active: any background stretch may
     /// have left the lyric index stale (missed notifications, old anchors),
-    /// so force-fresh reads from both sources; the sync engine's seek
+    /// so force a fresh Apple Music read; the sync engine's seek
     /// detection snaps the line immediately.
     func foregroundResync() {
         guard started else { return }
 #if os(iOS)
         appleSource.refresh()
 #endif
-        spotifySource.pollNow()
     }
 
     /// Entry point for the Start Drive Mode intent. May run with the app
@@ -167,23 +131,6 @@ final class AppModel: ObservableObject {
 
     // MARK: Actions
 
-#if os(iOS)
-    func connectSpotify() async {
-        do {
-            try await spotifyAuth.connect()
-            errorMessage = nil
-        } catch SpotifyAuthError.missingClientID {
-            errorMessage = "No Spotify client ID. Copy Secrets.example.plist to Secrets.plist and fill in your ID."
-        } catch {
-            errorMessage = "Spotify connection failed. Try again."
-        }
-    }
-#endif
-
-    func disconnectSpotify() {
-        spotifyAuth.disconnect()
-    }
-
     func retryLyrics() {
         guard let state = nowPlaying else { return }
         currentSignature = LyricsMatcher.signature(
@@ -198,8 +145,8 @@ final class AppModel: ObservableObject {
 
     // MARK: Wiring
 
-    private func wire() {
-        coordinator.statePublisher
+    private func wire(nowPlayingPublisher: AnyPublisher<NowPlayingState?, Never>) {
+        nowPlayingPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in self?.handle(state) }
             .store(in: &cancellables)
@@ -210,13 +157,6 @@ final class AppModel: ObservableObject {
                 self?.position = position
                 self?.syncLiveActivity()
             }
-            .store(in: &cancellables)
-
-        spotifyAuth.$isConnected
-            .sink { [weak self] in self?.spotifyConnected = $0 }
-            .store(in: &cancellables)
-        spotifyAuth.$needsReconnect
-            .sink { [weak self] in self?.spotifyNeedsReconnect = $0 }
             .store(in: &cancellables)
 
 #if os(iOS)
@@ -260,9 +200,9 @@ final class AppModel: ObservableObject {
 #endif
     }
 
-    /// Deviation from CLAUDE.md §6 (owner's decision): Drive Mode now means
-    /// "stay awake until toggled off", not "awake only while an activity is
-    /// up" — pauses of any length (parking, calls, coffee stops) must survive
+    /// Drive Mode means "stay awake until toggled off", not only while an
+    /// activity is active — pauses of any length (parking, calls, coffee
+    /// stops) must survive
     /// without reopening the app, because a suspended app can neither detect
     /// the resume nor re-request the activity from the background. Battery
     /// cost stays opt-in; the CarPlay automation (README) turns Drive Mode

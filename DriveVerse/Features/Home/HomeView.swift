@@ -9,7 +9,6 @@ struct HomeView: View {
                 VStack(spacing: 16) {
                     NowPlayingCard()
                     LyricPreviewCard()
-                    SpotifySection()
                     DriveModeCard()
                     if model.appleMusicAuth == .denied {
                         InfoBanner(
@@ -45,7 +44,6 @@ private struct NowPlayingCard: View {
         VStack(alignment: .leading, spacing: 8) {
             if let state = model.nowPlaying {
                 HStack {
-                    SourceBadge(source: state.source)
                     Spacer()
                     Image(systemName: state.isPlaying ? "play.fill" : "pause.fill")
                         .foregroundStyle(.secondary)
@@ -62,7 +60,7 @@ private struct NowPlayingCard: View {
             } else {
                 Label("Nothing playing", systemImage: "music.note")
                     .foregroundStyle(.secondary)
-                Text("Start a song in Apple Music or Spotify — DriveVerse picks it up automatically.")
+                Text("Start a song in Apple Music — DriveVerse picks it up automatically.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -70,19 +68,6 @@ private struct NowPlayingCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 16))
-    }
-}
-
-struct SourceBadge: View {
-    let source: MusicSource
-
-    var body: some View {
-        Text(source.displayName)
-            .font(.caption.bold())
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(source == .spotify ? .green.opacity(0.25) : .pink.opacity(0.25),
-                        in: Capsule())
     }
 }
 
@@ -134,50 +119,6 @@ private struct LyricPreviewCard: View {
             .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Spotify
-
-private struct SpotifySection: View {
-    @EnvironmentObject private var model: AppModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Spotify", systemImage: "music.note.tv")
-                .font(.caption.bold())
-                .foregroundStyle(.secondary)
-
-            if !model.spotifyAuth.hasClientID {
-                Text("Add your Spotify client ID: copy Secrets.example.plist to Secrets.plist and paste the ID from developer.spotify.com. See README.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else if model.spotifyNeedsReconnect {
-                InfoBanner(symbol: "exclamationmark.triangle",
-                           text: "Spotify session expired.")
-                connectButton(title: "Reconnect Spotify")
-            } else if model.spotifyConnected {
-                Label("Connected", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            } else {
-                connectButton(title: "Connect Spotify")
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 16))
-    }
-
-    private func connectButton(title: String) -> some View {
-        Button {
-#if os(iOS)
-            Task { await model.connectSpotify() }
-#endif
-        } label: {
-            Text(title)
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.borderedProminent)
     }
 }
 
