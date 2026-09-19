@@ -126,7 +126,7 @@ final class LiveActivityController {
         let content = state.map { Self.content(state: $0, position: position) }
             ?? LyricsAttributes.ContentState(
                 title: "DriveVerse", artist: "",
-                currentLine: "♪ Waiting for music…", nextLine: "",
+                currentLine: String(localized: "♪ Waiting for music…"), nextLine: "",
                 progress: 0, isPlaying: false
             )
         do {

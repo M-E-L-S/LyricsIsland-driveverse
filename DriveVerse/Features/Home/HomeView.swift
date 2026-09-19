@@ -13,7 +13,7 @@ struct HomeView: View {
                     if model.appleMusicAuth == .denied {
                         InfoBanner(
                             symbol: "exclamationmark.triangle",
-                            text: "Apple Music detection is off. Allow Media & Apple Music access in Settings → DriveVerse."
+                            text: String(localized: "Apple Music detection is off. Allow Media & Apple Music access in Settings → DriveVerse.")
                         )
                     }
                     if let message = model.errorMessage {

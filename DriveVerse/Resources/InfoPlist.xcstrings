@@ -1,0 +1,38 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "CFBundleDisplayName" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse" } }
+      }
+    },
+    "NSAppleMusicUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse reads the current Apple Music track to fetch and display synced lyrics. It never plays or modifies your music." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse 读取当前播放的 Apple Music 曲目信息，以查找并显示同步歌词；不会播放或修改你的音乐。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse 讀取目前播放的 Apple Music 歌曲資訊，以尋找並顯示同步歌詞；不會播放或修改你的音樂。" } }
+      }
+    },
+    "NSLocationAlwaysAndWhenInUseUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Allowing ‘Always’ lets the CarPlay automation start Drive Mode automatically when you get in the car. Positions are discarded immediately and never leave the device." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "允许“始终”使用定位后，CarPlay 自动化可在你上车时自动开启驾驶模式。位置信息会立即丢弃，绝不会离开设备。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "允許「永遠」使用定位後，CarPlay 自動化操作可在你上車時自動開啟駕駛模式。位置資訊會立即捨棄，絕不會離開裝置。" } }
+      }
+    },
+    "NSLocationWhenInUseUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Drive Mode uses a low-power location session to stay active in the background so lyrics keep updating on CarPlay and the lock screen. Positions are discarded immediately and never leave the device." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "驾驶模式使用低功耗定位会话在后台保持运行，以便歌词持续更新到 CarPlay 和锁定屏幕。位置信息会立即丢弃，绝不会离开设备。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "駕駛模式使用低耗電定位階段在背景保持執行，以便歌詞持續更新到 CarPlay 和鎖定畫面。位置資訊會立即捨棄，絕不會離開裝置。" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

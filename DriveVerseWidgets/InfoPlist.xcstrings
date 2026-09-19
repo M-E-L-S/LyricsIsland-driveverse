@@ -1,0 +1,14 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "CFBundleDisplayName" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse Lyrics" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse 歌词" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse 歌詞" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

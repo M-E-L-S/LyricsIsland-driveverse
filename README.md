@@ -30,6 +30,7 @@ Oh, and if you listen to Hindi, Punjabi, Russian, Japanese, or anything else tha
 - **Romanizes non-English lyrics** into Latin letters on the device (Hindi, Cyrillic, Japanese, Korean, and more).
 - **Keeps working while you drive** through a "Drive Mode" that stops iOS from freezing the app in your pocket.
 - **A full-screen scrolling lyrics view** in the app itself, for passengers or when you're parked.
+- **Follows the system language** with Simplified Chinese, Traditional Chinese, and English fallback.
 
 No account to make, no server, no analytics, no tracking. Everything happens on your phone.
 

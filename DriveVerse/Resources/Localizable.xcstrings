@@ -1,0 +1,281 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "About" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "About" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "关于" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "關於" } }
+      }
+    },
+    "Apple Music detection is off. Allow Media & Apple Music access in Settings → DriveVerse." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Apple Music detection is off. Allow Media & Apple Music access in Settings → DriveVerse." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Apple Music 检测已关闭。请在“设置”→“DriveVerse”中允许访问“媒体与 Apple Music”。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "Apple Music 偵測已關閉。請在「設定」→「DriveVerse」中允許取用「媒體與 Apple Music」。" } }
+      }
+    },
+    "Cache cleared" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Cache cleared" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "歌词缓存已清除" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "歌詞快取已清除" } }
+      }
+    },
+    "Check your connection." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Check your connection." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请检查网络连接。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "請檢查網路連線。" } }
+      }
+    },
+    "Clear lyrics cache" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Clear lyrics cache" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "清除歌词缓存" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "清除歌詞快取" } }
+      }
+    },
+    "Couldn't load lyrics" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't load lyrics" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无法加载歌词" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "無法載入歌詞" } }
+      }
+    },
+    "Drive Mode" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Drive Mode" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "驾驶模式" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "駕駛模式" } }
+      }
+    },
+    "Drive Mode & battery" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Drive Mode & battery" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "驾驶模式与电池" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "駕駛模式與電池" } }
+      }
+    },
+    "Drive Mode keeps DriveVerse awake in the background using a low-power location session, so lyrics keep updating on CarPlay and the lock screen while you drive. Locations are discarded immediately and never stored. It uses extra battery, so it's opt-in. This approach is fine for a personal sideloaded app but would not pass App Store review." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Drive Mode keeps DriveVerse awake in the background using a low-power location session, so lyrics keep updating on CarPlay and the lock screen while you drive. Locations are discarded immediately and never stored. It uses extra battery, so it's opt-in. This approach is fine for a personal sideloaded app but would not pass App Store review." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "驾驶模式使用低功耗定位会话让 DriveVerse 在后台保持运行，使歌词能在驾驶时持续更新到 CarPlay 和锁定屏幕。位置信息会立即丢弃，绝不会存储。此模式会增加耗电，因此需要手动开启；它适用于个人侧载版本，但不符合 App Store 审核要求。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "駕駛模式使用低耗電定位階段讓 DriveVerse 在背景保持執行，使歌詞能在駕駛時持續更新到 CarPlay 和鎖定畫面。位置資訊會立即捨棄，絕不儲存。此模式會增加耗電，因此需要手動開啟；它適用於個人側載版本，但不符合 App Store 審核要求。" } }
+      }
+    },
+    "Drive Mode needs location access to stay alive in the background. Allow it for DriveVerse in Settings → Privacy & Security → Location Services." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Drive Mode needs location access to stay alive in the background. Allow it for DriveVerse in Settings → Privacy & Security → Location Services." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "驾驶模式需要定位权限才能在后台保持运行。请前往“设置”→“隐私与安全性”→“定位服务”，允许 DriveVerse 使用定位。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "駕駛模式需要定位權限才能在背景保持執行。請前往「設定」→「隱私權與安全性」→「定位服務」，允許 DriveVerse 使用定位。" } }
+      }
+    },
+    "DriveVerse" : {
+      "shouldTranslate" : false
+    },
+    "DriveVerse is a personal-use app. Lyrics are fetched from the community-run LRCLIB API for private, non-commercial display. Do not distribute this app without a licensed lyrics provider." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse is a personal-use app. Lyrics are fetched from the community-run LRCLIB API for private, non-commercial display. Do not distribute this app without a licensed lyrics provider." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse 是个人使用的应用。歌词来自社区维护的 LRCLIB API，仅用于私人、非商业展示。未获得歌词服务授权时，请勿分发本应用。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse 是個人使用的 App。歌詞來自社群維護的 LRCLIB API，僅用於私人、非商業顯示。未取得歌詞服務授權時，請勿散布本 App。" } }
+      }
+    },
+    "Finding lyrics…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Finding lyrics…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在查找歌词…" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "正在尋找歌詞…" } }
+      }
+    },
+    "For smooth lyrics, turn on Settings → DriveVerse → Live Activities → More Frequent Updates." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "For smooth lyrics, turn on Settings → DriveVerse → Live Activities → More Frequent Updates." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "为了让歌词流畅更新，请前往“设置”→“DriveVerse”→“实时活动”，开启“更频繁更新”。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "為了讓歌詞流暢更新，請前往「設定」→「DriveVerse」→「即時動態」，開啟「更頻繁更新」。" } }
+      }
+    },
+    "Instrumental" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Instrumental" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纯音乐" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "純音樂" } }
+      }
+    },
+    "Instrumental 🎶" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Instrumental 🎶" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "纯音乐 🎶" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "純音樂 🎶" } }
+      }
+    },
+    "Keeps lyrics updating in the background for CarPlay. Uses a little more battery — turn it on only while driving." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Keeps lyrics updating in the background for CarPlay. Uses a little more battery — turn it on only while driving." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "让歌词在连接 CarPlay 时保持后台更新。会稍微增加耗电，请仅在驾驶时开启。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "讓歌詞在連接 CarPlay 時持續於背景更新。會稍微增加耗電，請只在駕駛時開啟。" } }
+      }
+    },
+    "LRCLIB has nothing for this track." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "LRCLIB has nothing for this track." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "LRCLIB 暂无此歌曲的歌词。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "LRCLIB 暫無這首歌的歌詞。" } }
+      }
+    },
+    "Lyrics" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Lyrics" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "歌词" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "歌詞" } }
+      }
+    },
+    "Lyrics aren't time-synced for this track" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Lyrics aren't time-synced for this track" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "此歌曲的歌词没有时间轴" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "這首歌的歌詞沒有時間軸" } }
+      }
+    },
+    "Lyrics available (not synced)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Lyrics available (not synced)" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已有歌词（未同步）" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "已有歌詞（未同步）" } }
+      }
+    },
+    "Lyrics come from LRCLIB and are cached on this device for at most 30 days." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Lyrics come from LRCLIB and are cached on this device for at most 30 days." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "歌词来自 LRCLIB，最多在本机缓存 30 天。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "歌詞來自 LRCLIB，最多在此裝置快取 30 天。" } }
+      }
+    },
+    "Lyrics show up here" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Lyrics show up here" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "歌词将在这里显示" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "歌詞會顯示在這裡" } }
+      }
+    },
+    "No lyrics found" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No lyrics found" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未找到歌词" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "找不到歌詞" } }
+      }
+    },
+    "Nothing playing" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Nothing playing" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "暂无播放内容" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "目前沒有播放內容" } }
+      }
+    },
+    "Settings" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Settings" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "设置" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "設定" } }
+      }
+    },
+    "Sit back and enjoy." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Sit back and enjoy." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "放松欣赏吧。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "輕鬆欣賞吧。" } }
+      }
+    },
+    "Start a song in Apple Music — DriveVerse picks it up automatically." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Start a song in Apple Music — DriveVerse picks it up automatically." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请在 Apple Music 中播放歌曲，DriveVerse 会自动识别。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "請在 Apple Music 中播放歌曲，DriveVerse 會自動偵測。" } }
+      }
+    },
+    "Start a song in Apple Music." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Start a song in Apple Music." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请在 Apple Music 中播放歌曲。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "請在 Apple Music 中播放歌曲。" } }
+      }
+    },
+    "Start Drive Mode" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Start Drive Mode" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "开始驾驶模式" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "開始駕駛模式" } }
+      }
+    },
+    "Stop Drive Mode" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Stop Drive Mode" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "停止驾驶模式" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "停止駕駛模式" } }
+      }
+    },
+    "Turns off Drive Mode and ends the lyrics Live Activity." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Turns off Drive Mode and ends the lyrics Live Activity." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "关闭驾驶模式并结束歌词实时活动。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "關閉駕駛模式並結束歌詞即時動態。" } }
+      }
+    },
+    "Turns on Drive Mode and starts the lyrics Live Activity for whatever plays next." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Turns on Drive Mode and starts the lyrics Live Activity for whatever plays next." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "开启驾驶模式，并为接下来播放的歌曲启动歌词实时活动。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "開啟駕駛模式，並為接下來播放的歌曲啟動歌詞即時動態。" } }
+      }
+    },
+    "Try Again" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Try Again" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重试" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "再試一次" } }
+      }
+    },
+    "♪ Waiting for music…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "♪ Waiting for music…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "♪ 等待音乐播放…" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "♪ 等待音樂播放…" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

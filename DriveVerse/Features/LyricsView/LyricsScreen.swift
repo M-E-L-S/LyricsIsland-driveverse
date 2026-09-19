@@ -34,13 +34,17 @@ struct LyricsScreen: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle(model.nowPlaying?.title ?? "Lyrics")
+        .navigationTitle(model.nowPlaying?.title ?? String(localized: "Lyrics"))
 #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
 #endif
     }
 
-    private func placeholder(symbol: String, title: String, detail: String) -> some View {
+    private func placeholder(
+        symbol: String,
+        title: LocalizedStringResource,
+        detail: LocalizedStringResource
+    ) -> some View {
         VStack(spacing: 8) {
             Image(systemName: symbol)
                 .font(.largeTitle)
@@ -49,7 +53,9 @@ struct LyricsScreen: View {
             Text(detail)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
+        .frame(maxWidth: .infinity)
         .padding()
     }
 }

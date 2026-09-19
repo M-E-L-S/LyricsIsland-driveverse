@@ -25,25 +25,25 @@
 - [x] 删除 `MusicSource`、`SourcePin` 和 Live Activity 中的 `sourceName`。
 - [x] 更新 README 和代码注释。
 
-验收：✅ 源代码、测试、配置和用户文档中不再存在 Spotify、Client ID、OAuth、Spotify Web API 相关实现或文案（本 TODO 的历史记录除外）。
+验收：✅ Actions 构建通过，iPhone 17 真机测试通过；源代码、测试、配置和用户文档中不再存在 Spotify、Client ID、OAuth、Spotify Web API 相关实现或文案（本 TODO 的历史记录除外）。
 
 ### P2 — 完整系统语言本地化
 
 采用系统语言，不提供 App 内语言切换。
 
-- [ ] 新建 String Catalog。
-- [ ] 支持：
+- [x] 新建 String Catalog。
+- [x] 支持：
     - 简体中文 `zh-Hans`
     - 繁体中文 `zh-Hant`
     - 英文作为 fallback
-- [ ] 本地化首页、设置、歌词页、错误信息、空状态、权限提示。
-- [ ] 本地化 Live Activity、灵动岛和 CarPlay 占位文案。
-- [ ] 本地化“开始驾驶模式／停止驾驶模式”快捷指令名称、描述和短语。
-- [ ] 本地化媒体库和定位权限说明。
-- [ ] 检查动态字符串，避免把完整英文句子拼接后再显示。
+- [x] 本地化首页、设置、歌词页、错误信息、空状态、权限提示。
+- [x] 本地化 Live Activity、灵动岛和 CarPlay 占位文案。
+- [x] 本地化“开始驾驶模式／停止驾驶模式”快捷指令名称、描述和短语。
+- [x] 本地化媒体库和定位权限说明。
+- [x] 检查动态字符串，避免把完整英文句子拼接后再显示。
 - [ ] 中文环境检查字体、换行、标点和 Dynamic Type。
 
-验收：中文系统全中文，英文系统显示英文；切换系统语言并重新启动后无需额外设置。
+验收：待 Actions 构建及 iPhone 17 简体中文／繁体中文／英文切换测试；同时检查字体、换行、标点和 Dynamic Type。
 
 ### P3 — 重构为中文歌词优先的数据模型
 
@@ -149,8 +149,10 @@
 - [ ] 增加多艺人、同名歌曲、Live/Remaster/伴奏版本匹配测试。
 - [ ] 增加翻译合并、繁简转换、逐字降级逐行测试。
 - [ ] iPhone 17 真机测试。
-- [ ] iPad 10 真机测试。
+- [ ] iPad 10 真机测试（仅在专门开发或修改 iPad 布局时执行；常规阶段验收省略）。
 - [ ] CarPlay 连接、断开、暂停、切歌、锁屏和后台长时间测试。
 - [ ] 验证 AltStore 重签后主 App 与 Live Activity Extension 都能正常启动。
 
 推荐实际执行顺序是：`P0 → P1 → P2 → P3 → P6 → P7 → P4/P5 → P8`。先得到一个干净、全中文、Apple Music-only、iPhone/iPad 均可用的版本，再引入网易云/QQ 等不稳定外部接口。
+
+测试约定：日常版本以 Actions 和 iPhone 17 真机为准；iPhone/iPad 系统版本一致，除非阶段内容专门涉及 iPad 布局或交互，否则不再单独进行 iPad 10 真机测试。

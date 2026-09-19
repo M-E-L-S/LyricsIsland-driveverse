@@ -1,0 +1,70 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Start ${applicationName} Drive Mode" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Start ${applicationName} Drive Mode",
+              "Turn on ${applicationName} Drive Mode"
+            ]
+          }
+        },
+        "zh-Hans" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "用${applicationName}开始驾驶模式",
+              "让${applicationName}开启驾驶模式"
+            ]
+          }
+        },
+        "zh-Hant" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "用${applicationName}開始駕駛模式",
+              "讓${applicationName}開啟駕駛模式"
+            ]
+          }
+        }
+      }
+    },
+    "Stop ${applicationName} Drive Mode" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Stop ${applicationName} Drive Mode",
+              "Turn off ${applicationName} Drive Mode"
+            ]
+          }
+        },
+        "zh-Hans" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "用${applicationName}停止驾驶模式",
+              "让${applicationName}关闭驾驶模式"
+            ]
+          }
+        },
+        "zh-Hant" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "用${applicationName}停止駕駛模式",
+              "讓${applicationName}關閉駕駛模式"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.1"
+}

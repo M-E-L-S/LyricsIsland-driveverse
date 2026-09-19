@@ -73,7 +73,9 @@ detects seeks, and maps the position to the active lyric line.
 - The planned unified model supports original text, translation,
   transliteration, line timing, and optional word timing.
 - UI language follows the system, with Simplified Chinese, Traditional Chinese,
-  and English fallback planned in `TODO.md`.
+  and English fallback. UI strings live in `Localizable.xcstrings`, privacy
+  prompts in `InfoPlist.xcstrings`, and shortcut phrases in
+  `AppShortcuts.xcstrings`.
 
 ## Verification
 

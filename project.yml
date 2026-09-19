@@ -1,6 +1,7 @@
 name: DriveVerse
 options:
   bundleIdPrefix: io.github.mels
+  developmentLanguage: en
   deploymentTarget:
     iOS: "26.0"
   createIntermediateGroups: true
