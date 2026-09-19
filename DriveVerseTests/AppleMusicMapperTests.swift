@@ -19,13 +19,16 @@ import Foundation
     }
 
     @Test func fullMapping() {
+        let artwork = Data([1, 2, 3])
         let snapshot = AppleMusicSnapshot(
             title: "Karma Police", artist: "Radiohead", album: "OK Computer",
+            artworkData: artwork,
             durationSec: 261.5, positionSec: 42.25, isPlaying: true
         )
         let state = AppleMusicStateMapper.state(from: snapshot, capturedAt: at)
         #expect(state == NowPlayingState(
             title: "Karma Police", artist: "Radiohead", album: "OK Computer",
+            artworkData: artwork,
             durationMs: 261_500, positionMs: 42_250,
             isPlaying: true, capturedAt: at
         ))

@@ -10,8 +10,8 @@ roadmap and completed phases.
 ## Product boundaries
 
 - Apple Music is the only playback source.
-- Observe playback with `MPMusicPlayerController.systemMusicPlayer`; the app
-  does not play or control music.
+- Observe and control Apple Music with `MPMusicPlayerController.systemMusicPlayer`.
+  Controls are limited to play/pause, previous/next, and seeking.
 - Lyrics are lazily searched from Kugou, NetEase, then LRCLIB and cached locally
   for no more than 30 days. Providers conform to `LyricsProvider`; at most three
   candidates per provider are fetched before falling back to the next source.

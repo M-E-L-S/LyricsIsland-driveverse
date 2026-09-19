@@ -33,6 +33,8 @@ final class LiveActivityController {
     private var pendingContent: LyricsAttributes.ContentState?
     private var lastSentTrackKey: String?
     private var lastSentIsPlaying: Bool?
+    private var lastSentPositionMs: Int?
+    private var lastSentAt: Date?
 
     /// While Drive Mode is on the session must survive arbitrary pauses:
     /// hold the activity (pause glyph) instead of ending it after the grace
@@ -45,6 +47,8 @@ final class LiveActivityController {
         policy.reset()
         lastSentTrackKey = nil
         lastSentIsPlaying = nil
+        lastSentPositionMs = nil
+        lastSentAt = nil
         cancelPendingUpdate()
     }
 
@@ -82,18 +86,34 @@ final class LiveActivityController {
         }
 
         let key = Self.key(for: state)
-        guard policy.shouldUpdate(
+        let now = Date()
+        let seekedWithinLine: Bool
+        if let sentPosition = lastSentPositionMs, let sentAt = lastSentAt,
+           key == lastSentTrackKey, state.isPlaying == lastSentIsPlaying,
+           let position {
+            let elapsed = state.isPlaying ? Int(now.timeIntervalSince(sentAt) * 1_000) : 0
+            seekedWithinLine = abs(position.positionMs - (sentPosition + elapsed))
+                > SyncEngine.seekThresholdMs
+        } else {
+            seekedWithinLine = false
+        }
+        let policyWantsUpdate = policy.shouldUpdate(
             trackKey: key,
             lineIndex: position?.lineIndex,
             isPlaying: state.isPlaying
-        ) else { return }
+        )
+        guard seekedWithinLine || policyWantsUpdate else { return }
 
-        let critical = key != lastSentTrackKey || state.isPlaying != lastSentIsPlaying
+        let critical = key != lastSentTrackKey
+            || state.isPlaying != lastSentIsPlaying
+            || seekedWithinLine
         lastSentTrackKey = key
         lastSentIsPlaying = state.isPlaying
+        lastSentPositionMs = position?.positionMs ?? state.positionMs
+        lastSentAt = now
         let content = Self.content(state: state, position: position)
 
-        switch throttle.decide(critical: critical, now: Date()) {
+        switch throttle.decide(critical: critical, now: now) {
         case .sendNow:
             cancelPendingUpdate() // superseded by newer content
             Task {
@@ -135,8 +155,11 @@ final class LiveActivityController {
         let content = state.map { Self.content(state: $0, position: position) }
             ?? LyricsAttributes.ContentState(
                 title: "DriveVerse", artist: "",
+                artworkData: nil,
                 currentLine: String(localized: "♪ Waiting for music…"),
                 secondaryLine: "", nextLine: "",
+                currentWords: [], trackPositionMs: 0, lyricPositionMs: 0,
+                playbackReferenceDate: Date(), durationMs: nil,
                 progress: 0, isPlaying: false
             )
         do {
@@ -150,6 +173,8 @@ final class LiveActivityController {
             if let state {
                 lastSentTrackKey = Self.key(for: state)
                 lastSentIsPlaying = state.isPlaying
+                lastSentPositionMs = position?.positionMs ?? state.positionMs
+                lastSentAt = Date()
                 policy.seed(
                     trackKey: Self.key(for: state),
                     lineIndex: position?.lineIndex,
@@ -158,6 +183,8 @@ final class LiveActivityController {
             } else {
                 lastSentTrackKey = nil
                 lastSentIsPlaying = nil
+                lastSentPositionMs = nil
+                lastSentAt = nil
                 policy.reset()
             }
         } catch {
@@ -177,6 +204,8 @@ final class LiveActivityController {
                 if self.activity?.id == requested.id {
                     self.activity = nil
                     self.policy.reset()
+                    self.lastSentPositionMs = nil
+                    self.lastSentAt = nil
                     self.cancelPendingUpdate()
                     Self.log.warning("activity ended outside the app — background restart impossible; reopen the app or rerun the CarPlay automation")
                 }
@@ -193,6 +222,8 @@ final class LiveActivityController {
         guard let activity else { return }
         self.activity = nil
         policy.reset()
+        lastSentPositionMs = nil
+        lastSentAt = nil
         await activity.end(nil, dismissalPolicy: .immediate)
     }
 
@@ -213,19 +244,41 @@ final class LiveActivityController {
     }
 
     private static func key(for state: NowPlayingState) -> String {
-        "\(state.title)|\(state.artist)"
+        "\(state.title)|\(state.artist)|\(state.album ?? "")|art:\(state.artworkData?.hashValue ?? 0)"
     }
 
     private static func content(state: NowPlayingState, position: LyricsPosition?) -> LyricsAttributes.ContentState {
         LyricsAttributes.ContentState(
-            title: state.title,
-            artist: state.artist,
-            currentLine: position?.currentLine ?? "♪ \(state.title)",
-            secondaryLine: position?.currentSecondaryLine ?? "",
-            nextLine: position?.nextLine ?? "",
+            title: String(state.title.prefix(64)),
+            artist: String(state.artist.prefix(64)),
+            artworkData: state.artworkData,
+            currentLine: String((position?.currentLine ?? "♪ \(state.title)").prefix(120)),
+            secondaryLine: String((position?.currentSecondaryLine ?? "").prefix(100)),
+            nextLine: String((position?.nextLine ?? "").prefix(100)),
+            currentWords: activityWords(position?.currentWords),
+            trackPositionMs: position?.positionMs ?? state.positionMs,
+            lyricPositionMs: position?.lyricPositionMs ?? state.positionMs,
+            playbackReferenceDate: Date(),
+            durationMs: state.durationMs,
             progress: position?.trackProgress ?? 0,
             isPlaying: state.isPlaying
         )
+    }
+
+    private static func activityWords(_ words: [LyricWordTiming]?) -> [LyricsAttributes.Word] {
+        guard let words,
+              words.count <= 24,
+              words.allSatisfy({ $0.original.count <= 16 }),
+              words.reduce(0, { $0 + $1.original.utf8.count }) <= 256 else {
+            return []
+        }
+        return words.map {
+            LyricsAttributes.Word(
+                text: $0.original,
+                startTimeMs: $0.startTimeMs,
+                endTimeMs: $0.endTimeMs
+            )
+        }
     }
 }
 #endif

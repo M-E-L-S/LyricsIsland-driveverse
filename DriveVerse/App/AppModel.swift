@@ -99,6 +99,8 @@ final class AppModel: ObservableObject {
         )
     }
 
+    var playbackAnchor: NowPlayingState? { syncEngine.anchor }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         lyricsDisplayMode = defaults.string(forKey: Self.displayModeKey)
@@ -174,6 +176,36 @@ final class AppModel: ObservableObject {
     }
 
     // MARK: Actions
+
+    func togglePlayback() {
+#if os(iOS)
+        appleSource.togglePlayback()
+#endif
+    }
+
+    func skipToPreviousItem() {
+#if os(iOS)
+        appleSource.skipToPreviousItem()
+#endif
+    }
+
+    func skipToNextItem() {
+#if os(iOS)
+        appleSource.skipToNextItem()
+#endif
+    }
+
+    func seek(toFraction fraction: Double) {
+#if os(iOS)
+        appleSource.seek(toFraction: fraction)
+#endif
+    }
+
+    func seek(bySeconds offset: Double) {
+#if os(iOS)
+        appleSource.seek(bySeconds: offset)
+#endif
+    }
 
     func retryLyrics() {
         guard let state = nowPlaying else { return }

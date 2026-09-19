@@ -3,9 +3,11 @@ import Combine
 
 struct LyricsPosition: Equatable {
     let positionMs: Int
+    let lyricPositionMs: Int
     let lineIndex: Int?
     let currentLine: String?
     let currentSecondaryLine: String?
+    let currentWords: [LyricWordTiming]?
     let nextLine: String?
     let nextSecondaryLine: String?
     /// 0–1 through the current line's time window.
@@ -137,6 +139,18 @@ final class SyncEngine {
         let currentSecondaryLine = index.flatMap {
             LyricsTextRenderer.secondary(for: lines[$0], options: displayOptions)
         }
+        let currentWords = index.flatMap { lines[$0].words }.map { words in
+            words.map { word in
+                LyricWordTiming(
+                    startTimeMs: word.startTimeMs,
+                    endTimeMs: word.endTimeMs,
+                    original: ChineseTextConverter.convert(
+                        word.original,
+                        using: displayOptions.chineseConversion
+                    )
+                )
+            }
+        }
         let nextIndex: Int?
         if let index {
             nextIndex = index + 1 < lines.count ? index + 1 : nil
@@ -164,8 +178,9 @@ final class SyncEngine {
         } ?? 0
 
         return LyricsPosition(
-            positionMs: pos, lineIndex: index,
+            positionMs: pos, lyricPositionMs: lyricPositionMs, lineIndex: index,
             currentLine: currentLine, currentSecondaryLine: currentSecondaryLine,
+            currentWords: currentWords,
             nextLine: nextLine, nextSecondaryLine: nextSecondaryLine,
             lineProgress: lineProgress, trackProgress: trackProgress,
             isPlaying: isPlaying

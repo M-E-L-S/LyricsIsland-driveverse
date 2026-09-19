@@ -43,20 +43,19 @@ private struct NowPlayingCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let state = model.nowPlaying {
-                HStack {
-                    Spacer()
-                    Image(systemName: state.isPlaying ? "play.fill" : "pause.fill")
-                        .foregroundStyle(.secondary)
+                HStack(spacing: 12) {
+                    AlbumArtworkView(data: state.artworkData)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(state.title)
+                            .font(.title2.bold())
+                            .lineLimit(2)
+                        Text(state.artist)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
-                Text(state.title)
-                    .font(.title2.bold())
-                    .lineLimit(2)
-                Text(state.artist)
-                    .foregroundStyle(.secondary)
-                if let position = model.position, state.durationMs != nil {
-                    ProgressView(value: position.trackProgress)
-                        .tint(.accentColor)
-                }
+                PlaybackControlsView()
+                    .padding(.top, 4)
             } else {
                 Label("Nothing playing", systemImage: "music.note")
                     .foregroundStyle(.secondary)

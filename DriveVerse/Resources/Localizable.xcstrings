@@ -396,6 +396,70 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "繁體中文" } }
       }
     },
+    "Next Track" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Next Track" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "下一首" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "下一首" } }
+      }
+    },
+    "Offset in seconds" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Offset in seconds" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "跳转秒数" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "跳轉秒數" } }
+      }
+    },
+    "Pause" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Pause" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "暂停" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "暫停" } }
+      }
+    },
+    "Play" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Play" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "播放" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "播放" } }
+      }
+    },
+    "Play or Pause" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Play or Pause" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "播放或暂停" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "播放或暫停" } }
+      }
+    },
+    "Playback position" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Playback position" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "播放进度" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "播放進度" } }
+      }
+    },
+    "Previous Track" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Previous Track" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "上一首" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "上一首" } }
+      }
+    },
+    "Seek Playback" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Seek Playback" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "跳转播放进度" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "跳轉播放進度" } }
+      }
+    },
     "♪ Waiting for music…" : {
       "extractionState" : "manual",
       "localizations" : {
