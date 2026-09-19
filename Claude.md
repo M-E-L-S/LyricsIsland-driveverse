@@ -12,9 +12,9 @@ roadmap and completed phases.
 - Apple Music is the only playback source.
 - Observe playback with `MPMusicPlayerController.systemMusicPlayer`; the app
   does not play or control music.
-- Lyrics are currently fetched from LRCLIB and cached locally for no more than
-  30 days. Additional lyric providers must conform to the provider architecture
-  planned in `TODO.md`.
+- Lyrics are lazily searched from Kugou, NetEase, then LRCLIB and cached locally
+  for no more than 30 days. Providers conform to `LyricsProvider`; at most three
+  candidates per provider are fetched before falling back to the next source.
 - The app has no account, analytics, backend, or tracking.
 - This is a personal sideloaded app, not an App Store product.
 - Do not add a conventional Home Screen or Lock Screen widget. The WidgetKit
@@ -42,7 +42,7 @@ AppleMusicSource
         │
         ├──► SyncEngine ──► in-app lyrics
         │
-        └──► LyricsService ──► cache / LRCLIB
+        └──► LyricsService ──► cache / Kugou → NetEase → LRCLIB
                                   │
                                   ▼
                          Live Activity controller

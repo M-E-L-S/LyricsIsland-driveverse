@@ -32,6 +32,7 @@ final class AppModel: ObservableObject {
 
     @Published private(set) var nowPlaying: NowPlayingState?
     @Published private(set) var lyricsState: LyricsDisplayState = .idle
+    @Published private(set) var currentLyricsSource: LyricsSource?
     @Published private(set) var position: LyricsPosition?
     @Published private(set) var appleMusicAuth: MediaAuthStatus = .unknown
     @Published var errorMessage: String?
@@ -39,6 +40,11 @@ final class AppModel: ObservableObject {
         didSet {
             defaults.set(lyricsDisplayMode.rawValue, forKey: Self.displayModeKey)
             refreshLyricsPresentation()
+            if LyricsSecondaryRequirement(displayMode: oldValue)
+                != LyricsSecondaryRequirement(displayMode: lyricsDisplayMode),
+               let state = nowPlaying {
+                fetchLyrics(for: state)
+            }
         }
     }
     @Published var chineseConversion: ChineseConversion {
@@ -172,9 +178,12 @@ final class AppModel: ObservableObject {
     func retryLyrics() {
         guard let state = nowPlaying else { return }
         currentSignature = LyricsMatcher.signature(
-            title: state.title, artist: state.artist, durationMs: state.durationMs
+            title: state.title,
+            artist: state.artist,
+            durationMs: state.durationMs,
+            album: state.album
         )
-        fetchLyrics(for: state)
+        fetchLyrics(for: state, forceRefresh: true)
     }
 
     func clearLyricsCache() {
@@ -218,11 +227,15 @@ final class AppModel: ObservableObject {
             lyricsTask?.cancel()
             syncEngine.setLyrics([])
             lyricsState = .idle
+            currentLyricsSource = nil
             return
         }
 
         let signature = LyricsMatcher.signature(
-            title: state.title, artist: state.artist, durationMs: state.durationMs
+            title: state.title,
+            artist: state.artist,
+            durationMs: state.durationMs,
+            album: state.album
         )
         if signature != currentSignature {
             currentSignature = signature
@@ -272,33 +285,42 @@ final class AppModel: ObservableObject {
 #endif
     }
 
-    private func fetchLyrics(for state: NowPlayingState) {
+    private func fetchLyrics(for state: NowPlayingState, forceRefresh: Bool = false) {
         lyricsTask?.cancel()
         syncEngine.setLyrics([])
         lyricsState = .loading
+        currentLyricsSource = nil
 
         lyricsTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let result = try await self.lyricsService.lyrics(for: state)
+                let result = try await self.lyricsService.lyrics(
+                    for: state,
+                    displayMode: self.lyricsDisplayMode,
+                    forceRefresh: forceRefresh
+                )
                 guard !Task.isCancelled else { return }
                 switch result {
                 case .document(let document):
-                    if document.timing == .synced {
+                    self.currentLyricsSource = document.source
+                    if document.isSynchronized {
                         self.lyricsState = .synced(document)
                         self.syncEngine.setLyrics(document.lines)
                     } else {
                         self.lyricsState = .plain(document)
                     }
                 case .instrumental:
+                    self.currentLyricsSource = nil
                     self.lyricsState = .instrumental
                 case .notFound:
+                    self.currentLyricsSource = nil
                     self.lyricsState = .notFound
                 }
             } catch is CancellationError {
                 // superseded by a newer track — nothing to do
             } catch {
                 guard !Task.isCancelled else { return }
+                self.currentLyricsSource = nil
                 self.lyricsState = .failed
                 Self.log.warning("lyrics fetch failed for \(state.title.prefix(12), privacy: .public): \(error.localizedDescription, privacy: .public)")
             }

@@ -156,7 +156,16 @@ extension HTTPStubbedTests {
     // Lives in this suite (not its own) because it shares StubURLProtocol's
     // static state — suites run in parallel, .serialized only orders within one.
     @Test func secondLookupServedFromCache() async throws {
-        StubURLProtocol.reset { _ in (200, syncedHit) }
+        StubURLProtocol.reset { request in
+            if request.url?.path == "/api/search" {
+                return (200, json("""
+                [{"id": 1, "trackName": "song", "artistName": "artist", "albumName": "album",
+                  "duration": 200.0, "instrumental": false,
+                  "plainLyrics": "Hello world", "syncedLyrics": "[00:01.00]Hello world"}]
+                """))
+            }
+            return (200, syncedHit)
+        }
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("driveverse-tests-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -183,6 +192,108 @@ extension HTTPStubbedTests {
         let second = try await service.lyrics(for: state)
         #expect(second == first)
         #expect(StubURLProtocol.requests.count == 1) // no extra network hit
+    }
+}
+
+@Suite struct MultiProviderClientTests {
+    @Test func kugouSearchReturnsMultipleTrackCandidates() async throws {
+        StubURLProtocol.reset { request in
+            guard request.url?.path == "/search" else { return (404, Data()) }
+            return (200, json("""
+            {"candidates":[
+              {"id":"A","accesskey":"KA","song":"Song","singer":"Artist","duration":200000},
+              {"id":"B","accesskey":"KB","song":"Song (Live)","singer":"Artist","duration":205000}
+            ]}
+            """))
+        }
+        let provider = KugouLyricsProvider(
+            session: StubURLProtocol.makeSession(),
+            searchBaseURL: URL(string: "https://stub.invalid")!,
+            lyricsBaseURL: URL(string: "https://stub.invalid")!
+        )
+        let query = LyricsSearchQuery(
+            title: "Song", artist: "Artist", album: "Album", durationMs: 200_000
+        )
+        let candidates = try await provider.search(for: query, limit: 3)
+        #expect(candidates.map(\.identifier) == ["A", "B"])
+        #expect(candidates.first?.album == nil)
+        #expect(candidates.first?.durationMs == 200_000)
+    }
+
+    @Test func neteaseSearchAndYRCFetch() async throws {
+        StubURLProtocol.reset { request in
+            switch request.url?.path {
+            case "/api/search/get/web":
+                return (200, json("""
+                {"result":{"songs":[{"id":123,"name":"Song","duration":200000,
+                  "artists":[{"name":"Artist"}],"album":{"name":"Album"}}]}}
+                """))
+            case "/api/song/lyric/v1":
+                return (200, json("""
+                {"code":200,
+                 "yrc":{"lyric":"[1000,1000](1000,400,0)你(1400,600,0)好"},
+                 "ytlrc":{"lyric":"[00:01.00]Hello"},
+                 "yromalrc":{"lyric":"[00:01.00]ni hao"}}
+                """))
+            default:
+                return (404, Data())
+            }
+        }
+        let provider = NeteaseLyricsProvider(
+            session: StubURLProtocol.makeSession(),
+            baseURL: URL(string: "https://stub.invalid")!
+        )
+        let query = LyricsSearchQuery(
+            title: "Song", artist: "Artist", album: "Album", durationMs: 200_000
+        )
+        let candidates = try await provider.search(for: query, limit: 3)
+        let candidate = try #require(candidates.first)
+        let content = try await provider.lyrics(for: candidate)
+        guard case .document(let document) = content else {
+            Issue.record("expected document")
+            return
+        }
+        #expect(document.source == .netease)
+        #expect(document.timing == .wordSynced)
+        #expect(document.lines.first?.translation == "Hello")
+        #expect(document.lines.first?.transliteration == "ni hao")
+    }
+
+    @Test func kugouFetchDecryptsKRC() async throws {
+        StubURLProtocol.reset { request in
+            switch request.url?.path {
+            case "/search":
+                return (200, json("""{"candidates":[{"id":"10","accesskey":"key"}]}"""))
+            case "/download":
+                return (200, json("""
+                {"content":"a3JjMTjb6kFqAkSXUCeAG8joSG9GfWcBEcRa91CH/e1ydSWeQkfR9VTT"}
+                """))
+            default:
+                return (404, Data())
+            }
+        }
+        let provider = KugouLyricsProvider(
+            session: StubURLProtocol.makeSession(),
+            searchBaseURL: URL(string: "https://stub.invalid")!,
+            lyricsBaseURL: URL(string: "https://stub.invalid")!
+        )
+        let candidate = LyricsCandidate(
+            identifier: "hash",
+            source: .kugou,
+            title: "Song",
+            artists: ["Artist"],
+            album: "Album",
+            durationMs: 2_000,
+            metadata: ["hash": "hash"]
+        )
+        let content = try await provider.lyrics(for: candidate)
+        guard case .document(let document) = content else {
+            Issue.record("expected document")
+            return
+        }
+        #expect(document.source == .kugou)
+        #expect(document.timing == .wordSynced)
+        #expect(document.lines.first?.original == "你好")
     }
 }
 }

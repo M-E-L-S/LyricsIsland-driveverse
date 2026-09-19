@@ -1,10 +1,21 @@
 import Foundation
 
 enum LyricsSource: String, Codable, Equatable, Hashable {
+    case kugou
+    case netease
     case lrclib
+
+    var title: LocalizedStringResource {
+        switch self {
+        case .kugou: return "Kugou Music"
+        case .netease: return "NetEase Cloud Music"
+        case .lrclib: return "LRCLIB"
+        }
+    }
 }
 
 enum LyricsTiming: String, Codable, Equatable, Hashable {
+    case wordSynced
     case synced
     case plain
 }
@@ -13,6 +24,13 @@ struct LyricWordTiming: Codable, Equatable, Hashable {
     let startTimeMs: Int
     let endTimeMs: Int
     let original: String
+}
+
+struct LyricsTrackMetadata: Codable, Equatable {
+    let title: String?
+    let artists: [String]
+    let album: String?
+    let durationMs: Int?
 }
 
 /// Provider-neutral lyric line. Original text is immutable; presentation
@@ -44,23 +62,26 @@ struct LyricsLine: Codable, Equatable, Hashable {
 
 struct LyricsDocument: Codable, Equatable {
     /// Increment whenever the on-disk structured lyric representation changes.
-    static let currentFormatVersion = 2
+    static let currentFormatVersion = 3
 
     let source: LyricsSource
     let formatVersion: Int
     let timing: LyricsTiming
     let lines: [LyricsLine]
+    let trackMetadata: LyricsTrackMetadata?
 
     init(
         source: LyricsSource,
         formatVersion: Int = currentFormatVersion,
         timing: LyricsTiming,
-        lines: [LyricsLine]
+        lines: [LyricsLine],
+        trackMetadata: LyricsTrackMetadata? = nil
     ) {
         self.source = source
         self.formatVersion = formatVersion
         self.timing = timing
         self.lines = lines
+        self.trackMetadata = trackMetadata
     }
 
     static func plain(_ text: String, source: LyricsSource) -> LyricsDocument {
@@ -69,6 +90,14 @@ struct LyricsDocument: Codable, Equatable {
             timing: .plain,
             lines: [LyricsLine(startTimeMs: 0, original: text)]
         )
+    }
+
+    var isSynchronized: Bool {
+        timing == .synced || timing == .wordSynced
+    }
+
+    var isWordSynced: Bool {
+        timing == .wordSynced && lines.contains { $0.words?.isEmpty == false }
     }
 }
 

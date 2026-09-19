@@ -27,8 +27,9 @@ import Foundation
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let content = syncedContent()
-        cache.store(content, signature: "lyrics-v2|lrclib|song|artist|40")
-        #expect(cache.lookup(signature: "lyrics-v2|lrclib|song|artist|40") == content)
+        let signature = "lyrics-v\(LyricsDocument.currentFormatVersion)|lrclib|song|artist|40"
+        cache.store(content, signature: signature)
+        #expect(cache.lookup(signature: signature) == content)
         #expect(cache.lookup(signature: "other|artist|40") == nil)
     }
 
@@ -50,6 +51,18 @@ import Foundation
     @Test func cacheKeyIncludesProviderAndFormatVersion() {
         let key = LyricsCache.key(source: .lrclib, trackSignature: "song|artist|40")
         #expect(key == "lyrics-v\(LyricsDocument.currentFormatVersion)|lrclib|song|artist|40")
+    }
+
+    @Test func selectionCacheSeparatesTranslationAndTransliteration() {
+        let translation = LyricsCache.selectionKey(
+            trackSignature: "song|artist|40",
+            secondaryRequirement: .translation
+        )
+        let transliteration = LyricsCache.selectionKey(
+            trackSignature: "song|artist|40",
+            secondaryRequirement: .transliteration
+        )
+        #expect(translation != transliteration)
     }
 
     @Test func expiresAfterThirtyDays() {

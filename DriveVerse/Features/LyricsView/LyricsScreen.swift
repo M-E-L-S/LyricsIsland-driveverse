@@ -27,7 +27,7 @@ struct LyricsScreen: View {
                             detail: "Sit back and enjoy.")
             case .notFound:
                 placeholder(symbol: "text.magnifyingglass", title: "No lyrics found",
-                            detail: "LRCLIB has nothing for this track.")
+                            detail: "No lyrics source has a match for this track.")
             case .failed:
                 VStack(spacing: 12) {
                     placeholder(symbol: "wifi.exclamationmark", title: "Couldn't load lyrics",

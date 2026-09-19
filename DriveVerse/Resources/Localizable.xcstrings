@@ -41,6 +41,14 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "清除歌詞快取" } }
       }
     },
+    "Current lyrics source" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Current lyrics source" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "当前歌词来源" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "目前歌詞來源" } }
+      }
+    },
     "Couldn't load lyrics" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -84,12 +92,12 @@
     "DriveVerse" : {
       "shouldTranslate" : false
     },
-    "DriveVerse is a personal-use app. Lyrics are fetched from the community-run LRCLIB API for private, non-commercial display. Do not distribute this app without a licensed lyrics provider." : {
+    "DriveVerse is a personal-use app. Lyrics are fetched from third-party services for private, non-commercial display. Do not distribute this app without licensed lyrics providers." : {
       "extractionState" : "manual",
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse is a personal-use app. Lyrics are fetched from the community-run LRCLIB API for private, non-commercial display. Do not distribute this app without a licensed lyrics provider." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse 是个人使用的应用。歌词来自社区维护的 LRCLIB API，仅用于私人、非商业展示。未获得歌词服务授权时，请勿分发本应用。" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse 是個人使用的 App。歌詞來自社群維護的 LRCLIB API，僅用於私人、非商業顯示。未取得歌詞服務授權時，請勿散布本 App。" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse is a personal-use app. Lyrics are fetched from third-party services for private, non-commercial display. Do not distribute this app without licensed lyrics providers." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse 是个人使用的应用。歌词来自第三方服务，仅用于私人、非商业展示。未获得歌词服务授权时，请勿分发本应用。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "DriveVerse 是個人使用的 App。歌詞來自第三方服務，僅用於私人、非商業顯示。未取得歌詞服務授權時，請勿散布本 App。" } }
       }
     },
     "Finding lyrics…" : {
@@ -124,6 +132,14 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "純音樂 🎶" } }
       }
     },
+    "Kugou Music" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Kugou Music" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "酷狗音乐" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "酷狗音樂" } }
+      }
+    },
     "Keeps lyrics updating in the background for CarPlay. Uses a little more battery — turn it on only while driving." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -132,12 +148,20 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "讓歌詞在連接 CarPlay 時持續於背景更新。會稍微增加耗電，請只在駕駛時開啟。" } }
       }
     },
-    "LRCLIB has nothing for this track." : {
+    "No lyrics source has a match for this track." : {
       "extractionState" : "manual",
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "LRCLIB has nothing for this track." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "LRCLIB 暂无此歌曲的歌词。" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "LRCLIB 暫無這首歌的歌詞。" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No lyrics source has a match for this track." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "所有歌词源都没有匹配结果。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "所有歌詞來源都沒有相符結果。" } }
+      }
+    },
+    "NetEase Cloud Music" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "NetEase Cloud Music" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "网易云音乐" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "網易雲音樂" } }
       }
     },
     "Lyrics" : {
@@ -164,12 +188,12 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "已有歌詞（未同步）" } }
       }
     },
-    "Lyrics come from LRCLIB and are cached on this device for at most 30 days." : {
+    "Lyrics are searched from Kugou Music, NetEase Cloud Music, then LRCLIB, and cached on this device for at most 30 days." : {
       "extractionState" : "manual",
       "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Lyrics come from LRCLIB and are cached on this device for at most 30 days." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "歌词来自 LRCLIB，最多在本机缓存 30 天。" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "歌詞來自 LRCLIB，最多在此裝置快取 30 天。" } }
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Lyrics are searched from Kugou Music, NetEase Cloud Music, then LRCLIB, and cached on this device for at most 30 days." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "歌词按酷狗音乐、网易云音乐、LRCLIB 的顺序搜索，最多在本机缓存 30 天。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "歌詞依酷狗音樂、網易雲音樂、LRCLIB 的順序搜尋，最多在此裝置快取 30 天。" } }
       }
     },
     "Lyrics show up here" : {
@@ -338,6 +362,14 @@
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Reset timing offset" } },
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重置时间偏移" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "重設時間偏移" } }
+      }
+    },
+    "Rematch lyrics" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Rematch lyrics" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重新匹配歌词" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "重新比對歌詞" } }
       }
     },
     "Simplified Chinese" : {

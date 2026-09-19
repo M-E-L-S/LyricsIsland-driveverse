@@ -69,29 +69,32 @@
 - [x] 支持全局歌词时间偏移校准。
 - [x] 缓存键加入歌词来源和数据格式版本，方便以后升级缓存结构。
 
-验收：待 Actions 构建及 iPhone 17 真机验证：中文保持原文、双语第二行、音译开关、繁简转换、时间偏移，以及 Live Activity 显示模式。
+验收：✅ Actions 构建及 iPhone 17 真机验证通过：中文保持原文、双语第二行、音译开关、繁简转换、时间偏移，以及 Live Activity 显示模式。
 
 ### P4 — 多歌词源架构
 
-- [ ] 把现有 `LRCLIBClient` 抽象成 `LyricsProvider`。
-- [ ] 建立统一搜索结果和歌词模型。
-- [ ] 增加匹配评分：
+- [x] 把现有 `LRCLIBClient` 抽象成 `LyricsProvider`。
+- [x] 建立统一搜索结果和歌词模型。
+- [x] 增加按字段优先级进行的字典序匹配：
     - 标题
     - 多艺人
     - 专辑
     - 时长误差
     - 版本词：Live、伴奏、翻唱、Remaster 等
-- [ ] Provider 按优先级查询。
-- [ ] 为每次命中记录来源、匹配分数和失败原因。
-- [ ] 设置页增加“当前歌词来源”和“重新匹配歌词”，但不让普通用户面对复杂配置。
-- [ ] 保留 30 天本地缓存和 1 天未命中缓存。
+    - 当前显示设置要求的翻译或音译
+    - 是否逐字
+- [x] Provider 按固定优先级懒惰查询；先用轻量元数据排序，每个来源最多拉取 3 份完整歌词，命中完美结果后停止。
+- [x] 为每次候选记录来源、逐项匹配结果和失败原因。
+- [x] 设置页增加“当前歌词来源”和“重新匹配歌词”，但不让普通用户面对复杂配置。
+- [x] 保留 30 天本地缓存和 1 天未命中缓存；翻译／音译要求分别缓存。
 
-初始优先级建议：
+当前固定优先级：
 
-1. LRCLIB
-2. 网易云或 QQ 音乐中的一个
-3. 第二个中文来源
-4. 暂不接入 Apple Music 私有歌词接口
+1. 酷狗音乐（KRC 逐字）
+2. 网易云音乐（优先 YRC 逐字，匿名接口无 YRC 时降级 LRC）
+3. LRCLIB
+
+不接入其他来源，也不接入 Apple Music 私有歌词接口。
 
 ### P5 — Lyricify Lyrics Helper 调研与移植
 
@@ -105,12 +108,12 @@
 
 具体 TODO：
 
-- [ ] 先研究并移植统一歌词模型，不整体搬运 C# 工程。
-- [ ] 第一阶段只移植网易云 YRC/LRC 或 QQ 音乐歌词解析中的一个。
-- [ ] 为移植代码保留 Apache-2.0 版权声明。
-- [ ] 为逐行、翻译和逐字歌词制作固定测试样本。
-- [ ] 第二阶段再考虑 QRC/KRC 解密、TTML 和背景人声。
-- [ ] 所有第三方 Provider 都必须支持单独禁用，接口失效时自动回退 LRCLIB。
+- [x] 研究并移植统一歌词模型，不整体搬运 C# 工程。
+- [x] 接入网易云 YRC/LRC 与酷狗 KRC，并合并翻译／音译。
+- [x] 为移植代码保留 Apache-2.0 来源和许可证声明（见 `THIRD_PARTY_NOTICES.md`）。
+- [x] 为逐行、翻译、音译和逐字歌词制作固定测试样本。
+- [x] 完成 KRC 解密；不接入 QRC、TTML 和背景人声。
+- [x] 第三方 Provider 可通过注入列表单独禁用；接口失效时自动回退下一来源直至 LRCLIB。
 
 风险说明：
 
@@ -118,7 +121,7 @@
 - QQ 音乐同样调用网页/客户端接口，并处理 QRC 解密。[QQ 音乐实现](https://github.com/WXRIW/Lyricify-Lyrics-Helper/blob/master/Lyricify.Lyrics.Helper/Providers/Web/QQMusic/Api.cs)
 - Lyricify 的 Apple Music 歌词实现使用 `amp-api.music.apple.com` 私有接口、从 Apple Music 网页提取 Access Token，并在完整能力下依赖 Media User Token，维护风险更高，不建议首批采用。[Apple Music Provider](https://github.com/WXRIW/Lyricify-Lyrics-Helper/blob/master/Lyricify.Lyrics.Helper/Providers/Web/AppleMusic/Api.cs)
 
-因此，推荐先做“LRCLIB + 网易云 fallback”，验证中文歌曲覆盖率后再决定是否加入 QQ 音乐。
+当前实现以“酷狗 → 网易云 → LRCLIB”懒惰搜索；网易云和酷狗均为非官方接口，失效时会自动回退。
 
 ### P6 — iPhone/iPad 全屏歌词体验
 

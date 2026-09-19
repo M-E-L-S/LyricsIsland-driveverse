@@ -34,20 +34,48 @@ import Testing
         #expect(LyricsMatcher.normalizeTitle("Soft Spot") == "soft spot")
     }
 
+    @Test func titleMatchPreservesMaterialVersionTerms() {
+        #expect(LyricsMatcher.titlesMatch("Song", "Song (Remastered 2011)" ) == false)
+        #expect(LyricsMatcher.titlesMatch("Song (Live)", "Song - Live at Wembley"))
+    }
+
     @Test func artistFeatStripped() {
         #expect(LyricsMatcher.normalizeArtist("Rihanna feat. JAY-Z") == "rihanna")
         #expect(LyricsMatcher.normalizeArtist("Calvin Harris (with Dua Lipa)") == "calvin harris")
     }
 
-    @Test func signatureStableAcrossVariants() {
-        let a = LyricsMatcher.signature(title: "Song (Remastered)", artist: "Artist", durationMs: 200_000)
+    @Test func multiArtistSetsMustMatch() {
+        #expect(LyricsMatcher.artistsMatch(["Artist A", "Artist B"], ["Artist B & Artist A"]))
+        #expect(!LyricsMatcher.artistsMatch(["Artist A"], ["Artist A", "Artist B"]))
+    }
+
+    @Test func signatureStableAcrossNonVersionDecorations() {
+        let a = LyricsMatcher.signature(title: "Song (feat. Guest)", artist: "Artist", durationMs: 200_000)
         let b = LyricsMatcher.signature(title: "Song", artist: "Artist", durationMs: 201_000)
         #expect(a == b)
+    }
+
+    @Test func signatureDiffersForMaterialVersion() {
+        let original = LyricsMatcher.signature(title: "Song", artist: "Artist", durationMs: 200_000)
+        let remaster = LyricsMatcher.signature(
+            title: "Song (Remastered)", artist: "Artist", durationMs: 200_000
+        )
+        #expect(original != remaster)
     }
 
     @Test func signatureDiffersByDuration() {
         let a = LyricsMatcher.signature(title: "Song", artist: "Artist", durationMs: 200_000)
         let b = LyricsMatcher.signature(title: "Song", artist: "Artist", durationMs: 260_000)
+        #expect(a != b)
+    }
+
+    @Test func signatureDiffersByAlbum() {
+        let a = LyricsMatcher.signature(
+            title: "Song", artist: "Artist", durationMs: 200_000, album: "Album A"
+        )
+        let b = LyricsMatcher.signature(
+            title: "Song", artist: "Artist", durationMs: 200_000, album: "Album B"
+        )
         #expect(a != b)
     }
 

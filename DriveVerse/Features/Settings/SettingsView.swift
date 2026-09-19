@@ -50,6 +50,14 @@ struct SettingsView: View {
             }
 
             Section {
+                if let source = model.currentLyricsSource {
+                    LabeledContent("Current lyrics source", value: String(localized: source.title))
+                }
+                Button("Rematch lyrics") {
+                    model.retryLyrics()
+                }
+                .disabled(model.nowPlaying == nil)
+
                 Button("Clear lyrics cache") {
                     model.clearLyricsCache()
                     cacheCleared = true
@@ -61,7 +69,7 @@ struct SettingsView: View {
             } header: {
                 Text("Lyrics")
             } footer: {
-                Text("Lyrics come from LRCLIB and are cached on this device for at most 30 days.")
+                Text("Lyrics are searched from Kugou Music, NetEase Cloud Music, then LRCLIB, and cached on this device for at most 30 days.")
             }
 
             Section {
@@ -73,7 +81,7 @@ struct SettingsView: View {
             }
 
             Section {
-                Text("DriveVerse is a personal-use app. Lyrics are fetched from the community-run LRCLIB API for private, non-commercial display. Do not distribute this app without a licensed lyrics provider.")
+                Text("DriveVerse is a personal-use app. Lyrics are fetched from third-party services for private, non-commercial display. Do not distribute this app without licensed lyrics providers.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } header: {

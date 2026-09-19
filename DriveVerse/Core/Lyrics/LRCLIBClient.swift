@@ -85,7 +85,7 @@ struct LRCLIBClient {
         return try JSONDecoder().decode(LRCLIBResponse.self, from: data)
     }
 
-    private func search(track: String, artist: String) async throws -> [LRCLIBResponse] {
+    func search(track: String, artist: String) async throws -> [LRCLIBResponse] {
         let items = [
             URLQueryItem(name: "track_name", value: track),
             URLQueryItem(name: "artist_name", value: artist),
@@ -109,5 +109,38 @@ struct LRCLIBClient {
         case 404: return nil
         default: throw ClientError.badStatus(http.statusCode)
         }
+    }
+}
+
+struct LRCLIBProvider: LyricsProvider {
+    let source: LyricsSource = .lrclib
+    private let client: LRCLIBClient
+
+    init(client: LRCLIBClient = LRCLIBClient()) {
+        self.client = client
+    }
+
+    func search(for query: LyricsSearchQuery, limit: Int) async throws -> [LyricsCandidate] {
+        let responses = try await client.search(
+            track: LyricsMatcher.normalizeTitle(query.title),
+            artist: query.artists.joined(separator: " ")
+        )
+        return responses.prefix(limit).enumerated().map { index, response in
+            let result = LRCLIBClient.result(from: response)
+            return LyricsCandidate(
+                identifier: response.id.map { String($0) } ?? "search-\(index)",
+                source: .lrclib,
+                title: response.trackName ?? query.title,
+                artists: LyricsMatcher.splitArtists(response.artistName ?? ""),
+                album: response.albumName,
+                durationMs: response.duration.map { Int(($0 * 1_000).rounded()) },
+                embeddedResult: result
+            )
+        }
+    }
+
+    func lyrics(for candidate: LyricsCandidate) async throws -> LyricsContent {
+        guard let result = candidate.embeddedResult else { return .notFound }
+        return LyricsService.structure(result, source: .lrclib)
     }
 }

@@ -1,31 +1,64 @@
 import Foundation
 
-/// Cache-first lyrics lookup: versioned provider key → structured cache →
-/// LRCLIB → provider-neutral document → cache.
+/// Cache-first multi-provider lookup. Providers are queried in fixed order and
+/// each provider's best three metadata candidates are fetched lazily.
 final class LyricsService {
-    private let client: LRCLIBClient
+    private let searchEngine: LyricsSearchEngine
     private let cache: LyricsCache
+    private(set) var lastAttempts: [LyricsSearchAttempt] = []
 
-    init(client: LRCLIBClient = LRCLIBClient(), cache: LyricsCache = LyricsCache()) {
-        self.client = client
+    init(
+        providers: [any LyricsProvider] = [
+            KugouLyricsProvider(),
+            NeteaseLyricsProvider(),
+            LRCLIBProvider(),
+        ],
+        cache: LyricsCache = LyricsCache()
+    ) {
+        searchEngine = LyricsSearchEngine(providers: providers)
         self.cache = cache
     }
 
-    func lyrics(for state: NowPlayingState) async throws -> LyricsContent {
+    /// Compatibility initializer retained for focused LRCLIB tests and for
+    /// deployments that explicitly disable third-party providers.
+    init(client: LRCLIBClient, cache: LyricsCache = LyricsCache()) {
+        searchEngine = LyricsSearchEngine(providers: [LRCLIBProvider(client: client)])
+        self.cache = cache
+    }
+
+    func lyrics(
+        for state: NowPlayingState,
+        displayMode: LyricsDisplayMode = .originalAndTranslation,
+        forceRefresh: Bool = false
+    ) async throws -> LyricsContent {
         let trackSignature = LyricsMatcher.signature(
-            title: state.title, artist: state.artist, durationMs: state.durationMs
+            title: state.title,
+            artist: state.artist,
+            durationMs: state.durationMs,
+            album: state.album
         )
-        let signature = LyricsCache.key(source: .lrclib, trackSignature: trackSignature)
-        if let hit = cache.lookup(signature: signature) {
+        let requirement = LyricsSecondaryRequirement(displayMode: displayMode)
+        let signature = LyricsCache.selectionKey(
+            trackSignature: trackSignature,
+            secondaryRequirement: requirement
+        )
+        if !forceRefresh, let hit = cache.lookup(signature: signature) {
+            lastAttempts = []
             return hit
         }
-        let fetched = try await client.fetchLyrics(
-            title: state.title, artist: state.artist,
-            album: state.album, durationMs: state.durationMs
+
+        let outcome = try await searchEngine.search(
+            query: LyricsSearchQuery(
+                title: state.title,
+                artist: state.artist,
+                album: state.album,
+                durationMs: state.durationMs
+            ),
+            secondaryRequirement: requirement
         )
-        let content = Self.structure(fetched, source: .lrclib)
-        cache.store(content, signature: signature)
-        return content
+        lastAttempts = outcome.attempts
+        cache.store(outcome.content, signature: signature)
+        return outcome.content
     }
 
     func clearCache() {

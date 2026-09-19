@@ -29,6 +29,13 @@ final class LyricsCache {
         "lyrics-v\(LyricsDocument.currentFormatVersion)|\(source.rawValue)|\(trackSignature)"
     }
 
+    static func selectionKey(
+        trackSignature: String,
+        secondaryRequirement: LyricsSecondaryRequirement
+    ) -> String {
+        "lyrics-v\(LyricsDocument.currentFormatVersion)|selection|\(secondaryRequirement.rawValue)|\(trackSignature)"
+    }
+
     func lookup(signature: String) -> LyricsContent? {
         let url = fileURL(for: signature)
         guard let data = try? Data(contentsOf: url),

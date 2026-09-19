@@ -21,11 +21,54 @@ enum LyricsMatcher {
         return collapseWhitespace(s)
     }
 
+    static func normalizeAlbum(_ raw: String) -> String {
+        collapseWhitespace(stripBracketed(raw.lowercased()))
+    }
+
+    static func splitArtists(_ raw: String) -> [String] {
+        var value = raw.lowercased()
+        for marker in [" featuring ", " feat. ", " feat ", " ft. ", " ft ", " with ", " & ", "、", ";", ",", "/"] {
+            value = value.replacingOccurrences(of: marker, with: "|")
+        }
+        let artists = value.split(separator: "|")
+            .map { collapseWhitespace(stripBracketed(String($0))) }
+            .filter { !$0.isEmpty }
+        return artists.isEmpty ? [normalizeArtist(raw)] : artists
+    }
+
+    static func titlesMatch(_ lhs: String, _ rhs: String) -> Bool {
+        normalizeTitle(lhs) == normalizeTitle(rhs)
+            && versionTerms(in: lhs) == versionTerms(in: rhs)
+    }
+
+    static func artistsMatch(_ lhs: [String], _ rhs: [String]) -> Bool {
+        let wanted = Set(lhs.flatMap { splitArtists($0) }.map { normalizeArtist($0) }.filter { !$0.isEmpty })
+        let actual = Set(rhs.flatMap { splitArtists($0) }.map { normalizeArtist($0) }.filter { !$0.isEmpty })
+        if wanted.isEmpty { return true }
+        return wanted == actual
+    }
+
+    static func albumsMatch(_ lhs: String?, _ rhs: String?) -> Bool {
+        guard let lhs, !lhs.isEmpty else { return true }
+        guard let rhs, !rhs.isEmpty else { return false }
+        return normalizeAlbum(lhs) == normalizeAlbum(rhs)
+    }
+
     /// Cache key for a track. Duration is bucketed to 5 s so slightly different
     /// reports of the same track usually share one cache entry.
-    static func signature(title: String, artist: String, durationMs: Int?) -> String {
+    static func signature(
+        title: String,
+        artist: String,
+        durationMs: Int?,
+        album: String? = nil
+    ) -> String {
         let bucket = durationMs.map { Int((Double($0) / 5000.0).rounded()) } ?? -1
-        return "\(normalizeTitle(title))|\(normalizeArtist(artist))|\(bucket)"
+        var base = "\(normalizeTitle(title))|\(normalizeArtist(artist))|\(bucket)"
+        if let album, !album.isEmpty {
+            base += "|album:\(normalizeAlbum(album))"
+        }
+        let versions = versionTerms(in: title).sorted().joined(separator: ",")
+        return versions.isEmpty ? base : "\(base)|\(versions)"
     }
 
     /// Picks the `/api/search` result whose normalized title matches and whose
@@ -73,5 +116,22 @@ enum LyricsMatcher {
 
     private static func collapseWhitespace(_ s: String) -> String {
         s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+
+    /// Keeps materially different releases from becoming a false title hit
+    /// after bracket/suffix normalization.
+    private static func versionTerms(in raw: String) -> Set<String> {
+        let text = raw.lowercased()
+        let groups: [(String, [String])] = [
+            ("live", ["live", "现场", "演唱会"]),
+            ("instrumental", ["instrumental", "伴奏", "纯音乐"]),
+            ("cover", ["cover", "翻唱"]),
+            ("remaster", ["remaster", "remastered", "重制"]),
+            ("acoustic", ["acoustic", "不插电"]),
+            ("karaoke", ["karaoke", "卡拉ok"]),
+        ]
+        return Set(groups.compactMap { canonical, terms in
+            terms.contains(where: { text.contains($0) }) ? canonical : nil
+        })
     }
 }
