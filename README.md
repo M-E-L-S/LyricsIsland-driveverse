@@ -16,7 +16,7 @@ DriveVerse watches the song playing in Apple Music, finds the synced lyrics for 
 
 It doesn't play any music of its own, it isn't a full CarPlay app, and it never touches your playback. It only reads what's playing and shows the lyrics.
 
-Oh, and if you listen to Hindi, Punjabi, Russian, Japanese, or anything else that isn't written in the Latin alphabet, DriveVerse romanizes the lyrics so you can actually read along in English letters.
+Lyrics always keep their original script. When available, translations appear underneath; optional on-device transliteration can be enabled in Settings without modifying the stored original.
 
 > **A note on lyrics and copyright.** Lyrics come from [LRCLIB](https://lrclib.net), a free community lyrics database. That's fine for a personal app you build and run yourself, which is exactly what this is. It is *not* okay for the App Store without a proper licensed lyrics provider, so please don't ship it there. Lyrics are cached only on your device, for 30 days at most.
 
@@ -26,8 +26,8 @@ Oh, and if you listen to Hindi, Punjabi, Russian, Japanese, or anything else tha
 
 - **Reads your current song** from Apple Music through the local MediaPlayer framework.
 - **Fetches synced (LRC) lyrics** from LRCLIB and keeps them lined up with the music as it plays.
-- **Shows the current + next line** as a Live Activity — the same tile appears on your **CarPlay** screen, **lock screen**, and **Dynamic Island** on iOS 26.
-- **Romanizes non-English lyrics** into Latin letters on the device (Hindi, Cyrillic, Japanese, Korean, and more).
+- **Shows the current line plus its translation or the next line** as a Live Activity — the same tile appears on your **CarPlay** screen, **lock screen**, and **Dynamic Island** on iOS 26.
+- **Preserves original lyrics** with optional translation, transliteration, Simplified/Traditional Chinese conversion, and timing offset controls.
 - **Keeps working while you drive** through a "Drive Mode" that stops iOS from freezing the app in your pocket.
 - **A full-screen scrolling lyrics view** in the app itself, for passengers or when you're parked.
 - **Follows the system language** with Simplified Chinese, Traditional Chinese, and English fallback.
@@ -124,7 +124,7 @@ Everything stays on your phone. There's no backend, no account, and no analytics
 - Only the basic track details (title, artist, album, length) are sent to LRCLIB to look up lyrics.
 - Lyrics are cached on disk for up to 30 days. Settings → Clear Cache wipes them.
 - Drive Mode's location fixes are discarded immediately — nothing is saved or transmitted.
-- Lyric romanization happens on the device. No text is sent anywhere for it.
+- Optional lyric transliteration and Simplified/Traditional Chinese conversion happen on the device. No text is sent anywhere for them.
 
 ## Running the tests
 
@@ -134,14 +134,14 @@ There's a full unit test suite (Swift Testing). GitHub Actions runs it before pa
 ./scripts/test.sh
 ```
 
-It covers Apple Music state mapping, lyric parsing, title/artist matching, the sync engine, the LRCLIB client and its fallbacks, the on-disk cache, lyric romanization, and the Live Activity update logic.
+It covers Apple Music state mapping, structured bilingual lyric parsing, title/artist matching, the sync engine, timing offsets, the LRCLIB client and its fallbacks, the versioned on-disk cache, lyric presentation, and the Live Activity update logic.
 
 ## Good to know / limitations
 
 - Without Drive Mode on, updates stop shortly after the app goes to the background. That's expected — Drive Mode is the fix.
 - DriveVerse can't control playback (it's just watching), so the lyrics view is display-only by design.
 - If a song isn't in LRCLIB, you'll see "No lyrics found." Misses are re-checked the next day; hits are cached.
-- Romanization uses the standard system transliteration, which is very readable but occasionally a little literal.
+- Optional transliteration uses the standard system transform, which is readable but occasionally a little literal.
 - There is no dedicated CarPlay dashboard widget; the Live Activity is the CarPlay experience.
 
 ## How the project is organized
@@ -151,7 +151,7 @@ DriveVerse/
 ├── App/            App entry point, Drive Mode shortcuts, and the main wiring
 ├── Core/
 │   ├── NowPlaying/ Apple Music playback observation
-│   ├── Lyrics/     LRCLIB client, parser, matcher, cache, romanizer
+│   ├── Lyrics/     LRCLIB client, structured model, parser, cache, presentation
 │   ├── Sync/       Keeps the lyric line matched to the playback position
 │   └── KeepAlive/  Drive Mode background location session
 ├── LiveActivity/   The lyrics tile shown on CarPlay / lock screen

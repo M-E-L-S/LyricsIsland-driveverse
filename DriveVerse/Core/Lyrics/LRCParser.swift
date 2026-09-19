@@ -1,10 +1,5 @@
 import Foundation
 
-struct LRCLine: Equatable, Hashable {
-    let timeMs: Int
-    let text: String
-}
-
 /// Pure LRC parser. No I/O, no state — heavily unit-tested.
 enum LRCParser {
     /// Parses LRC text into time-sorted, non-empty lyric lines.
@@ -13,9 +8,10 @@ enum LRCParser {
     /// `[mm:ss]`, `[mm:ss.x]`–`[mm:ss.xxx]`, and `[mm:ss:xx]` timestamps, and the
     /// `[offset:±ms]` tag (positive offset shifts lyrics earlier, per LRC
     /// convention). Metadata tags (`[ar:]`, `[ti:]`, `[al:]`, …) are ignored.
-    static func parse(_ raw: String) -> [LRCLine] {
+    static func parse(_ raw: String) -> [LyricsLine] {
         var offsetMs = 0
-        var entries: [(timeMs: Int, text: String)] = []
+        var entries: [(timeMs: Int, text: String, order: Int)] = []
+        var order = 0
 
         for rawLine in raw.components(separatedBy: .newlines) {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
@@ -37,13 +33,47 @@ enum LRCParser {
             let text = rest.trimmingCharacters(in: .whitespaces)
             guard !text.isEmpty else { continue }
             for time in times {
-                entries.append((time, text))
+                entries.append((time, text, order))
+                order += 1
             }
         }
 
-        return entries
-            .map { LRCLine(timeMs: max(0, $0.timeMs - offsetMs), text: $0.text) }
-            .sorted { $0.timeMs < $1.timeMs }
+        let sorted = entries
+            .sorted { lhs, rhs in
+                lhs.timeMs == rhs.timeMs ? lhs.order < rhs.order : lhs.timeMs < rhs.timeMs
+            }
+
+        var groups: [(timeMs: Int, texts: [String])] = []
+        for entry in sorted {
+            if let last = groups.indices.last, groups[last].timeMs == entry.timeMs {
+                if !groups[last].texts.contains(entry.text) {
+                    groups[last].texts.append(entry.text)
+                }
+            } else {
+                groups.append((entry.timeMs, [entry.text]))
+            }
+        }
+
+        // Group before applying the offset: clamping two distinct early
+        // timestamps to zero must not misclassify them as bilingual variants.
+        groups = groups.map {
+            (timeMs: max(0, $0.timeMs - offsetMs), texts: $0.texts)
+        }
+
+        return groups.enumerated().map { index, group in
+            let endTimeMs = index + 1 < groups.count ? groups[index + 1].timeMs : nil
+            let translation = group.texts.count > 1 ? group.texts[1] : nil
+            let transliteration = group.texts.count > 2
+                ? group.texts.dropFirst(2).joined(separator: "\n")
+                : nil
+            return LyricsLine(
+                startTimeMs: group.timeMs,
+                endTimeMs: endTimeMs,
+                original: group.texts[0],
+                translation: translation,
+                transliteration: transliteration
+            )
+        }
     }
 
     /// `mm:ss`, `mm:ss.frac` (1–3 digits), or `mm:ss:frac`. Returns nil for

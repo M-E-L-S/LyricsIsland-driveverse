@@ -4,6 +4,20 @@ import Foundation
 
 private let t0 = Date(timeIntervalSinceReferenceDate: 800_000_000)
 
+private func line(
+    _ start: Int,
+    _ original: String,
+    end: Int? = nil,
+    translation: String? = nil
+) -> LyricsLine {
+    LyricsLine(
+        startTimeMs: start,
+        endTimeMs: end,
+        original: original,
+        translation: translation
+    )
+}
+
 private func state(
     title: String = "Track",
     positionMs: Int,
@@ -40,10 +54,10 @@ private func state(
 
 @Suite struct SyncEngineLineIndexTests {
     let lines = [
-        LRCLine(timeMs: 5_000, text: "one"),
-        LRCLine(timeMs: 10_000, text: "two"),
-        LRCLine(timeMs: 20_000, text: "three"),
-        LRCLine(timeMs: 30_000, text: "four"),
+        line(5_000, "one", end: 10_000),
+        line(10_000, "two", end: 20_000),
+        line(20_000, "three", end: 30_000),
+        line(30_000, "four"),
     ]
 
     @Test func beforeFirstLineIsNil() {
@@ -112,9 +126,9 @@ private func state(
 
 @Suite struct SyncEnginePositionOutputTests {
     let lines = [
-        LRCLine(timeMs: 5_000, text: "one"),
-        LRCLine(timeMs: 10_000, text: "two"),
-        LRCLine(timeMs: 20_000, text: "three"),
+        line(5_000, "one", end: 10_000),
+        line(10_000, "two", end: 20_000, translation: "二"),
+        line(20_000, "three"),
     ]
 
     @Test func publishesCurrentAndNextLine() {
@@ -129,6 +143,7 @@ private func state(
         let pos = try? #require(engine.positionSubject.value)
         #expect(pos?.lineIndex == 1)
         #expect(pos?.currentLine == "two")
+        #expect(pos?.currentSecondaryLine == "二")
         #expect(pos?.nextLine == "three")
         #expect(pos?.positionMs == 12_000)
         // line window 10 s → 20 s, position 12 s ⇒ 20 %
@@ -146,6 +161,31 @@ private func state(
         #expect(pos?.lineIndex == nil)
         #expect(pos?.currentLine == nil)
         #expect(pos?.nextLine == "one")
+    }
+
+    @Test func positiveOffsetDelaysLyrics() {
+        let position = SyncEngine.position(
+            atMs: 10_500,
+            lines: lines,
+            durationMs: 240_000,
+            isPlaying: true,
+            offsetMs: 1_000
+        )
+        #expect(position.lineIndex == 0)
+        #expect(position.currentLine == "one")
+    }
+
+    @Test func originalOnlyHidesSecondaryLine() {
+        let options = LyricsDisplayOptions(mode: .original, chineseConversion: .preserve)
+        let position = SyncEngine.position(
+            atMs: 12_000,
+            lines: lines,
+            durationMs: 240_000,
+            isPlaying: true,
+            displayOptions: options
+        )
+        #expect(position.currentLine == "two")
+        #expect(position.currentSecondaryLine == nil)
     }
 
     @Test func nilStateClearsPosition() {

@@ -95,15 +95,17 @@ import Foundation
         }
         let lines = LRCParser.parse(doc)
         #expect(lines.count == 5000)
-        #expect(lines.first?.text == "line 0")
-        #expect(lines.last?.text == "line 4999")
+        #expect(lines.first?.original == "line 0")
+        #expect(lines.last?.original == "line 4999")
         for pair in zip(lines, lines.dropFirst()) {
-            #expect(pair.0.timeMs <= pair.1.timeMs)
+            #expect(pair.0.startTimeMs <= pair.1.startTimeMs)
         }
     }
 
     @Test func lineIndexBinarySearchOverHugeSheet() {
-        let lines = (0..<20_000).map { LRCLine(timeMs: $0 * 250, text: "l\($0)") }
+        let lines = (0..<20_000).map {
+            LyricsLine(startTimeMs: $0 * 250, original: "l\($0)")
+        }
         #expect(SyncEngine.lineIndex(forPositionMs: 0, in: lines) == 0)
         #expect(SyncEngine.lineIndex(forPositionMs: 1_234_567, in: lines) == 4938)
         #expect(SyncEngine.lineIndex(forPositionMs: 20_000 * 250, in: lines) == 19_999)

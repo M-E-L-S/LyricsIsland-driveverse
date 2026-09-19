@@ -31,7 +31,9 @@ struct LyricsLiveActivity: Widget {
                             .font(.headline)
                             .lineLimit(2)
                             .minimumScaleFactor(0.8)
-                        Text(context.state.nextLine)
+                        Text(context.state.secondaryLine.isEmpty
+                             ? context.state.nextLine
+                             : context.state.secondaryLine)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -91,11 +93,15 @@ struct LockScreenLyricsView: View {
                 .contentTransition(.opacity)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(context.state.nextLine)
+            Text(context.state.secondaryLine.isEmpty
+                 ? context.state.nextLine
+                 : context.state.secondaryLine)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .id(context.state.nextLine)
+                .id(context.state.secondaryLine.isEmpty
+                    ? context.state.nextLine
+                    : context.state.secondaryLine)
                 .transition(.push(from: .bottom))
         }
         .padding(10)
@@ -120,7 +126,9 @@ struct LockScreenLyricsView: View {
                 .lineLimit(2)
                 .minimumScaleFactor(0.75)
 
-            Text(context.state.nextLine)
+            Text(context.state.secondaryLine.isEmpty
+                 ? context.state.nextLine
+                 : context.state.secondaryLine)
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

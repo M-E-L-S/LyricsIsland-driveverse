@@ -99,7 +99,11 @@ private struct LyricPreviewCard: View {
                     Text(model.position?.currentLine ?? "♪")
                         .font(.headline)
                         .lineLimit(2)
-                    if let next = model.position?.nextLine {
+                    if let secondary = model.position?.currentSecondaryLine {
+                        Text(secondary)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    } else if let next = model.position?.nextLine {
                         Text(next)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)

@@ -66,12 +66,16 @@ detects seeks, and maps the position to the active lyric line.
   keep personal sideloaded builds alive while driving. Location values are
   discarded and never stored or transmitted.
 
-## Lyrics direction (planned in P3)
+## Lyrics model and presentation
 
-- Preserve original lyric text. Never irreversibly replace Chinese or other
-  scripts with Latin transliteration.
-- The planned unified model supports original text, translation,
-  transliteration, line timing, and optional word timing.
+- `LyricsDocument` is the cached provider-neutral representation. Its cache
+  key includes the provider and format version.
+- Each `LyricsLine` preserves immutable original text and can also carry a
+  translation, transliteration, start/end timing, and optional word timing.
+- Transliteration and Simplified/Traditional Chinese conversion are
+  presentation-only operations. Never write their output over original text.
+- The default presentation is original plus translation. Transliteration is
+  opt-in, and a global ±5 second timing offset is available in Settings.
 - UI language follows the system, with Simplified Chinese, Traditional Chinese,
   and English fallback. UI strings live in `Localizable.xcstrings`, privacy
   prompts in `InfoPlist.xcstrings`, and shortcut phrases in

@@ -7,6 +7,49 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
+                Picker("Display", selection: $model.lyricsDisplayMode) {
+                    ForEach(LyricsDisplayMode.allCases) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+
+                Picker("Chinese characters", selection: $model.chineseConversion) {
+                    ForEach(ChineseConversion.allCases) { option in
+                        Text(option.title).tag(option)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Timing offset")
+                        Spacer()
+                        Text(verbatim: String(
+                            format: "%+.1f s",
+                            Double(model.lyricsTimingOffsetMs) / 1_000
+                        ))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    }
+                    Slider(
+                        value: Binding(
+                            get: { Double(model.lyricsTimingOffsetMs) },
+                            set: { model.lyricsTimingOffsetMs = Int($0.rounded()) }
+                        ),
+                        in: -5_000...5_000,
+                        step: 100
+                    )
+                    Button("Reset timing offset") {
+                        model.resetLyricsTimingOffset()
+                    }
+                    .disabled(model.lyricsTimingOffsetMs == 0)
+                }
+            } header: {
+                Text("Lyrics display")
+            } footer: {
+                Text("Positive values delay the lyrics; negative values show them earlier.")
+            }
+
+            Section {
                 Button("Clear lyrics cache") {
                     model.clearLyricsCache()
                     cacheCleared = true

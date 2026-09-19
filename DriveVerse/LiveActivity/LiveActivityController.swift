@@ -39,6 +39,15 @@ final class LiveActivityController {
     /// period, because a fresh start would need the foreground.
     var holdWhilePaused = false
 
+    /// Display preferences can change without a track or line change.
+    /// Reset deduplication so the newly rendered text reaches ActivityKit.
+    func forceNextUpdate() {
+        policy.reset()
+        lastSentTrackKey = nil
+        lastSentIsPlaying = nil
+        cancelPendingUpdate()
+    }
+
     init() {
         // Clean up activities orphaned by a previous app termination.
         Task {
@@ -126,7 +135,8 @@ final class LiveActivityController {
         let content = state.map { Self.content(state: $0, position: position) }
             ?? LyricsAttributes.ContentState(
                 title: "DriveVerse", artist: "",
-                currentLine: String(localized: "♪ Waiting for music…"), nextLine: "",
+                currentLine: String(localized: "♪ Waiting for music…"),
+                secondaryLine: "", nextLine: "",
                 progress: 0, isPlaying: false
             )
         do {
@@ -211,6 +221,7 @@ final class LiveActivityController {
             title: state.title,
             artist: state.artist,
             currentLine: position?.currentLine ?? "♪ \(state.title)",
+            secondaryLine: position?.currentSecondaryLine ?? "",
             nextLine: position?.nextLine ?? "",
             progress: position?.trackProgress ?? 0,
             isPlaying: state.isPlaying

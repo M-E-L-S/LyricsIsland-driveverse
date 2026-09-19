@@ -14,10 +14,14 @@ struct LyricsScreen: View {
                             detail: "Start a song in Apple Music.")
             case .loading:
                 ProgressView("Finding lyrics…")
-            case .synced(let lines):
-                SyncedLyricsView(lines: lines, currentIndex: model.position?.lineIndex)
-            case .plain(let text):
-                PlainLyricsView(text: text)
+            case .synced(let document):
+                SyncedLyricsView(
+                    lines: document.lines,
+                    currentIndex: model.position?.lineIndex,
+                    options: model.lyricsDisplayOptions
+                )
+            case .plain(let document):
+                PlainLyricsView(document: document, options: model.lyricsDisplayOptions)
             case .instrumental:
                 placeholder(symbol: "pianokeys", title: "Instrumental",
                             detail: "Sit back and enjoy.")
@@ -61,16 +65,24 @@ struct LyricsScreen: View {
 }
 
 struct SyncedLyricsView: View {
-    let lines: [LRCLine]
+    let lines: [LyricsLine]
     let currentIndex: Int?
+    let options: LyricsDisplayOptions
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                        Text(line.text)
-                            .font(index == currentIndex ? .title2.bold() : .title3)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(LyricsTextRenderer.primary(for: line, options: options))
+                                .font(index == currentIndex ? .title2.bold() : .title3)
+                            if let secondary = LyricsTextRenderer.secondary(for: line, options: options) {
+                                Text(secondary)
+                                    .font(index == currentIndex ? .body : .callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                             .foregroundStyle(index == currentIndex ? .primary : .secondary)
                             .opacity(index == currentIndex ? 1 : 0.55)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -91,7 +103,8 @@ struct SyncedLyricsView: View {
 }
 
 private struct PlainLyricsView: View {
-    let text: String
+    let document: LyricsDocument
+    let options: LyricsDisplayOptions
 
     var body: some View {
         ScrollView {
@@ -99,8 +112,17 @@ private struct PlainLyricsView: View {
                 Label("Lyrics aren't time-synced for this track", systemImage: "clock.badge.questionmark")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                Text(text)
-                    .font(.title3)
+                ForEach(Array(document.lines.enumerated()), id: \.offset) { _, line in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(LyricsTextRenderer.primary(for: line, options: options))
+                            .font(.title3)
+                        if let secondary = LyricsTextRenderer.secondary(for: line, options: options) {
+                            Text(secondary)
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(24)

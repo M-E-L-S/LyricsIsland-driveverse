@@ -8,8 +8,8 @@ import ActivityKit
 enum LyricsDisplayState: Equatable {
     case idle       // nothing playing yet
     case loading
-    case synced([LRCLine])
-    case plain(String)
+    case synced(LyricsDocument)
+    case plain(LyricsDocument)
     case instrumental
     case notFound
     case failed
@@ -24,6 +24,9 @@ final class AppModel: ObservableObject {
     static let shared = AppModel()
 
     private static let log = Logger(subsystem: "io.github.mels.driveverse", category: "pipeline")
+    private static let displayModeKey = "lyricsDisplayMode"
+    private static let chineseConversionKey = "lyricsChineseConversion"
+    private static let timingOffsetKey = "lyricsTimingOffsetMs"
 
     // MARK: UI state
 
@@ -32,6 +35,24 @@ final class AppModel: ObservableObject {
     @Published private(set) var position: LyricsPosition?
     @Published private(set) var appleMusicAuth: MediaAuthStatus = .unknown
     @Published var errorMessage: String?
+    @Published var lyricsDisplayMode: LyricsDisplayMode {
+        didSet {
+            defaults.set(lyricsDisplayMode.rawValue, forKey: Self.displayModeKey)
+            refreshLyricsPresentation()
+        }
+    }
+    @Published var chineseConversion: ChineseConversion {
+        didSet {
+            defaults.set(chineseConversion.rawValue, forKey: Self.chineseConversionKey)
+            refreshLyricsPresentation()
+        }
+    }
+    @Published var lyricsTimingOffsetMs: Int {
+        didSet {
+            defaults.set(lyricsTimingOffsetMs, forKey: Self.timingOffsetKey)
+            syncEngine.setOffsetMs(lyricsTimingOffsetMs)
+        }
+    }
     @Published var driveMode = false {
         didSet {
 #if os(iOS)
@@ -58,13 +79,28 @@ final class AppModel: ObservableObject {
 #endif
     private let syncEngine = SyncEngine()
     private let lyricsService = LyricsService()
+    private let defaults: UserDefaults
 
     private var cancellables: Set<AnyCancellable> = []
     private var lyricsTask: Task<Void, Never>?
     private var currentSignature: String?
     private var started = false
 
-    init() {
+    var lyricsDisplayOptions: LyricsDisplayOptions {
+        LyricsDisplayOptions(
+            mode: lyricsDisplayMode,
+            chineseConversion: chineseConversion
+        )
+    }
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        lyricsDisplayMode = defaults.string(forKey: Self.displayModeKey)
+            .flatMap(LyricsDisplayMode.init(rawValue:)) ?? .originalAndTranslation
+        chineseConversion = defaults.string(forKey: Self.chineseConversionKey)
+            .flatMap(ChineseConversion.init(rawValue:)) ?? .preserve
+        lyricsTimingOffsetMs = min(5_000, max(-5_000, defaults.integer(forKey: Self.timingOffsetKey)))
+
         let applePublisher: AnyPublisher<NowPlayingState?, Never>
 #if os(iOS)
         let apple = AppleMusicSource()
@@ -74,6 +110,8 @@ final class AppModel: ObservableObject {
         applePublisher = Just<NowPlayingState?>(nil).eraseToAnyPublisher()
 #endif
 
+        syncEngine.setDisplayOptions(lyricsDisplayOptions)
+        syncEngine.setOffsetMs(lyricsTimingOffsetMs)
         wire(nowPlayingPublisher: applePublisher)
 
 #if os(iOS)
@@ -143,6 +181,10 @@ final class AppModel: ObservableObject {
         lyricsService.clearCache()
     }
 
+    func resetLyricsTimingOffset() {
+        lyricsTimingOffsetMs = 0
+    }
+
     // MARK: Wiring
 
     private func wire(nowPlayingPublisher: AnyPublisher<NowPlayingState?, Never>) {
@@ -187,6 +229,13 @@ final class AppModel: ObservableObject {
             fetchLyrics(for: state)
         }
         syncLiveActivity()
+    }
+
+    private func refreshLyricsPresentation() {
+#if os(iOS)
+        liveActivity.forceNextUpdate()
+#endif
+        syncEngine.setDisplayOptions(lyricsDisplayOptions)
     }
 
     /// The controller's update policy dedupes the 500 ms ticks — only line
@@ -234,18 +283,13 @@ final class AppModel: ObservableObject {
                 let result = try await self.lyricsService.lyrics(for: state)
                 guard !Task.isCancelled else { return }
                 switch result {
-                case .synced(let raw):
-                    let lines = LRCParser.parse(raw).map {
-                        LRCLine(timeMs: $0.timeMs, text: Transliterator.latinized($0.text))
-                    }
-                    if lines.isEmpty {
-                        self.lyricsState = .notFound
+                case .document(let document):
+                    if document.timing == .synced {
+                        self.lyricsState = .synced(document)
+                        self.syncEngine.setLyrics(document.lines)
                     } else {
-                        self.lyricsState = .synced(lines)
-                        self.syncEngine.setLyrics(lines)
+                        self.lyricsState = .plain(document)
                     }
-                case .plain(let text):
-                    self.lyricsState = .plain(Transliterator.latinized(text))
                 case .instrumental:
                     self.lyricsState = .instrumental
                 case .notFound:

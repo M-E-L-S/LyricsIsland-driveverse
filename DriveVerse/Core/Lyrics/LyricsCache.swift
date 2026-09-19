@@ -2,12 +2,12 @@ import Foundation
 import CryptoKit
 
 struct CachedLyrics: Codable, Equatable {
-    let result: LyricsFetchResult
+    let content: LyricsContent
     let storedAt: Date
 }
 
-/// Disk cache for lyric lookups, keyed by track signature.
-/// Per CLAUDE.md §2.5: local-only, entries never served past 30 days.
+/// Disk cache for structured lyric lookups, keyed by format version, provider,
+/// and normalized track signature. Entries are never served past 30 days.
 /// Negative results (`notFound`) are retried after a day.
 final class LyricsCache {
     static let maxAge: TimeInterval = 30 * 24 * 3600
@@ -25,23 +25,27 @@ final class LyricsCache {
         try? fileManager.createDirectory(at: self.directory, withIntermediateDirectories: true)
     }
 
-    func lookup(signature: String) -> LyricsFetchResult? {
+    static func key(source: LyricsSource, trackSignature: String) -> String {
+        "lyrics-v\(LyricsDocument.currentFormatVersion)|\(source.rawValue)|\(trackSignature)"
+    }
+
+    func lookup(signature: String) -> LyricsContent? {
         let url = fileURL(for: signature)
         guard let data = try? Data(contentsOf: url),
               let cached = try? JSONDecoder().decode(CachedLyrics.self, from: data) else {
             return nil
         }
         let age = now().timeIntervalSince(cached.storedAt)
-        let limit = cached.result == .notFound ? Self.notFoundMaxAge : Self.maxAge
+        let limit = cached.content.isNotFound ? Self.notFoundMaxAge : Self.maxAge
         guard age >= 0, age < limit else {
             try? fileManager.removeItem(at: url)
             return nil
         }
-        return cached.result
+        return cached.content
     }
 
-    func store(_ result: LyricsFetchResult, signature: String) {
-        let cached = CachedLyrics(result: result, storedAt: now())
+    func store(_ content: LyricsContent, signature: String) {
+        let cached = CachedLyrics(content: content, storedAt: now())
         guard let data = try? JSONEncoder().encode(cached) else { return }
         try? data.write(to: fileURL(for: signature), options: .atomic)
     }

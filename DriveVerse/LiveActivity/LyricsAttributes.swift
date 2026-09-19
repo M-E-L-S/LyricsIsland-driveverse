@@ -14,6 +14,7 @@ struct LyricsAttributes: ActivityAttributes {
         var title: String
         var artist: String
         var currentLine: String
+        var secondaryLine: String
         var nextLine: String
         /// 0–1 progress through the whole track.
         var progress: Double

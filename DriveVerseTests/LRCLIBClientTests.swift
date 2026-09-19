@@ -159,6 +159,7 @@ extension HTTPStubbedTests {
         StubURLProtocol.reset { _ in (200, syncedHit) }
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("driveverse-tests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
         let service = LyricsService(
             client: LRCLIBClient(session: StubURLProtocol.makeSession()),
             cache: LyricsCache(directory: dir)
@@ -170,14 +171,18 @@ extension HTTPStubbedTests {
         )
 
         let first = try await service.lyrics(for: state)
-        #expect(first == .synced("[00:01.00]Hello world"))
+        guard case .document(let document) = first else {
+            Issue.record("expected a structured lyrics document")
+            return
+        }
+        #expect(document.source == .lrclib)
+        #expect(document.timing == .synced)
+        #expect(document.lines.first?.original == "Hello world")
         #expect(StubURLProtocol.requests.count == 1)
 
         let second = try await service.lyrics(for: state)
         #expect(second == first)
         #expect(StubURLProtocol.requests.count == 1) // no extra network hit
-
-        try? FileManager.default.removeItem(at: dir)
     }
 }
 }

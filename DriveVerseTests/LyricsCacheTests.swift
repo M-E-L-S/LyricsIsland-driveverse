@@ -9,23 +9,47 @@ import Foundation
         return (LyricsCache(directory: dir, now: now), dir)
     }
 
-    @Test func roundTrip() {
+    private func syncedContent(_ original: String = "你好") -> LyricsContent {
+        .document(LyricsDocument(
+            source: .lrclib,
+            timing: .synced,
+            lines: [LyricsLine(
+                startTimeMs: 1_000,
+                endTimeMs: 2_000,
+                original: original,
+                translation: "Hello"
+            )]
+        ))
+    }
+
+    @Test func structuredDocumentRoundTripPreservesOriginalAndTranslation() {
         let (cache, dir) = makeCache(now: Date.init)
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        cache.store(.synced("[00:01.00]Hi"), signature: "song|artist|40")
-        #expect(cache.lookup(signature: "song|artist|40") == .synced("[00:01.00]Hi"))
+        let content = syncedContent()
+        cache.store(content, signature: "lyrics-v2|lrclib|song|artist|40")
+        #expect(cache.lookup(signature: "lyrics-v2|lrclib|song|artist|40") == content)
         #expect(cache.lookup(signature: "other|artist|40") == nil)
     }
 
-    @Test func allResultKindsRoundTrip() {
+    @Test func allContentKindsRoundTrip() {
         let (cache, dir) = makeCache(now: Date.init)
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        for (i, result) in [LyricsFetchResult.plain("words"), .instrumental, .notFound].enumerated() {
-            cache.store(result, signature: "sig-\(i)")
-            #expect(cache.lookup(signature: "sig-\(i)") == result)
+        let values: [LyricsContent] = [
+            .document(.plain("plain words", source: .lrclib)),
+            .instrumental,
+            .notFound,
+        ]
+        for (index, content) in values.enumerated() {
+            cache.store(content, signature: "sig-\(index)")
+            #expect(cache.lookup(signature: "sig-\(index)") == content)
         }
+    }
+
+    @Test func cacheKeyIncludesProviderAndFormatVersion() {
+        let key = LyricsCache.key(source: .lrclib, trackSignature: "song|artist|40")
+        #expect(key == "lyrics-v\(LyricsDocument.currentFormatVersion)|lrclib|song|artist|40")
     }
 
     @Test func expiresAfterThirtyDays() {
@@ -33,10 +57,10 @@ import Foundation
         let (cache, dir) = makeCache(now: { fakeNow })
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        cache.store(.synced("x"), signature: "sig")
+        cache.store(syncedContent("x"), signature: "sig")
         fakeNow = fakeNow.addingTimeInterval(29 * 24 * 3600)
-        #expect(cache.lookup(signature: "sig") == .synced("x"))
-        fakeNow = fakeNow.addingTimeInterval(2 * 24 * 3600) // day 31
+        #expect(cache.lookup(signature: "sig") == syncedContent("x"))
+        fakeNow = fakeNow.addingTimeInterval(2 * 24 * 3600)
         #expect(cache.lookup(signature: "sig") == nil)
     }
 
@@ -56,13 +80,12 @@ import Foundation
         let (cache, dir) = makeCache(now: Date.init)
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        cache.store(.synced("x"), signature: "a")
-        cache.store(.plain("y"), signature: "b")
+        cache.store(syncedContent("x"), signature: "a")
+        cache.store(.document(.plain("y", source: .lrclib)), signature: "b")
         cache.clear()
         #expect(cache.lookup(signature: "a") == nil)
         #expect(cache.lookup(signature: "b") == nil)
-        // Cache still usable after clear.
-        cache.store(.synced("z"), signature: "c")
-        #expect(cache.lookup(signature: "c") == .synced("z"))
+        cache.store(syncedContent("z"), signature: "c")
+        #expect(cache.lookup(signature: "c") == syncedContent("z"))
     }
 }

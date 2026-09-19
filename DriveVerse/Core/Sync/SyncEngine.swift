@@ -5,7 +5,9 @@ struct LyricsPosition: Equatable {
     let positionMs: Int
     let lineIndex: Int?
     let currentLine: String?
+    let currentSecondaryLine: String?
     let nextLine: String?
+    let nextSecondaryLine: String?
     /// 0–1 through the current line's time window.
     let lineProgress: Double
     /// 0–1 through the whole track.
@@ -22,7 +24,9 @@ final class SyncEngine {
 
     var now: () -> Date
     private(set) var anchor: NowPlayingState?
-    private(set) var lines: [LRCLine] = []
+    private(set) var lines: [LyricsLine] = []
+    private(set) var displayOptions = LyricsDisplayOptions()
+    private(set) var offsetMs = 0
     let positionSubject = CurrentValueSubject<LyricsPosition?, Never>(nil)
     private var timer: AnyCancellable?
 
@@ -30,8 +34,19 @@ final class SyncEngine {
         self.now = now
     }
 
-    func setLyrics(_ lines: [LRCLine]) {
+    func setLyrics(_ lines: [LyricsLine]) {
         self.lines = lines
+        tick()
+    }
+
+    func setDisplayOptions(_ options: LyricsDisplayOptions) {
+        displayOptions = options
+        tick()
+    }
+
+    /// Positive values delay lyrics; negative values show them earlier.
+    func setOffsetMs(_ value: Int) {
+        offsetMs = min(5_000, max(-5_000, value))
         tick()
     }
 
@@ -74,7 +89,8 @@ final class SyncEngine {
         let pos = Self.extrapolatedPositionMs(anchor: anchor, at: now())
         positionSubject.send(Self.position(
             atMs: pos, lines: lines,
-            durationMs: anchor.durationMs, isPlaying: anchor.isPlaying
+            durationMs: anchor.durationMs, isPlaying: anchor.isPlaying,
+            displayOptions: displayOptions, offsetMs: offsetMs
         ))
     }
 
@@ -92,13 +108,13 @@ final class SyncEngine {
 
     /// Index of the last line with timestamp ≤ position (binary search);
     /// nil before the first line or when there are no lines.
-    static func lineIndex(forPositionMs pos: Int, in lines: [LRCLine]) -> Int? {
-        guard let first = lines.first, pos >= first.timeMs else { return nil }
+    static func lineIndex(forPositionMs pos: Int, in lines: [LyricsLine]) -> Int? {
+        guard let first = lines.first, pos >= first.startTimeMs else { return nil }
         var lo = 0
         var hi = lines.count - 1
         while lo < hi {
             let mid = (lo + hi + 1) / 2
-            if lines[mid].timeMs <= pos {
+            if lines[mid].startTimeMs <= pos {
                 lo = mid
             } else {
                 hi = mid - 1
@@ -107,22 +123,40 @@ final class SyncEngine {
         return lo
     }
 
-    static func position(atMs pos: Int, lines: [LRCLine], durationMs: Int?, isPlaying: Bool) -> LyricsPosition {
-        let index = lineIndex(forPositionMs: pos, in: lines)
-        let currentLine = index.map { lines[$0].text }
-        let nextLine: String?
+    static func position(
+        atMs pos: Int,
+        lines: [LyricsLine],
+        durationMs: Int?,
+        isPlaying: Bool,
+        displayOptions: LyricsDisplayOptions = LyricsDisplayOptions(),
+        offsetMs: Int = 0
+    ) -> LyricsPosition {
+        let lyricPositionMs = max(0, pos - offsetMs)
+        let index = lineIndex(forPositionMs: lyricPositionMs, in: lines)
+        let currentLine = index.map { LyricsTextRenderer.primary(for: lines[$0], options: displayOptions) }
+        let currentSecondaryLine = index.flatMap {
+            LyricsTextRenderer.secondary(for: lines[$0], options: displayOptions)
+        }
+        let nextIndex: Int?
         if let index {
-            nextLine = index + 1 < lines.count ? lines[index + 1].text : nil
+            nextIndex = index + 1 < lines.count ? index + 1 : nil
         } else {
-            nextLine = lines.first?.text
+            nextIndex = lines.isEmpty ? nil : 0
+        }
+        let nextLine = nextIndex.map { LyricsTextRenderer.primary(for: lines[$0], options: displayOptions) }
+        let nextSecondaryLine = nextIndex.flatMap {
+            LyricsTextRenderer.secondary(for: lines[$0], options: displayOptions)
         }
 
         var lineProgress = 0.0
         if let index {
-            let start = lines[index].timeMs
-            let end = index + 1 < lines.count ? lines[index + 1].timeMs : (durationMs ?? start + 5000)
+            let start = lines[index].startTimeMs
+            let end = lines[index].endTimeMs
+                ?? (index + 1 < lines.count ? lines[index + 1].startTimeMs : nil)
+                ?? durationMs
+                ?? (start + 5000)
             if end > start {
-                lineProgress = min(1, max(0, Double(pos - start) / Double(end - start)))
+                lineProgress = min(1, max(0, Double(lyricPositionMs - start) / Double(end - start)))
             }
         }
         let trackProgress = durationMs.flatMap { dur in
@@ -131,7 +165,8 @@ final class SyncEngine {
 
         return LyricsPosition(
             positionMs: pos, lineIndex: index,
-            currentLine: currentLine, nextLine: nextLine,
+            currentLine: currentLine, currentSecondaryLine: currentSecondaryLine,
+            nextLine: nextLine, nextSecondaryLine: nextSecondaryLine,
             lineProgress: lineProgress, trackProgress: trackProgress,
             isPlaying: isPlaying
         )
