@@ -148,10 +148,16 @@ struct KugouLyricsProvider: LyricsProvider {
             byte ^ key[index % key.count]
         }
 
-        var capacity = max(64 * 1024, compressed.count * 4)
+        // Kugou stores a complete RFC 1950 zlib stream. Apple's
+        // COMPRESSION_ZLIB decoder, despite its name, consumes the raw RFC 1951
+        // DEFLATE payload, so remove the zlib header and Adler-32 trailer first.
+        // Keep the original bytes as a fallback for nonstandard/raw fixtures.
+        let payload = zlibDeflatePayload(from: compressed) ?? compressed
+
+        var capacity = max(64 * 1024, payload.count * 4)
         while capacity <= 8 * 1024 * 1024 {
             var output = [UInt8](repeating: 0, count: capacity)
-            let decodedCount = compressed.withUnsafeBytes { sourceBuffer in
+            let decodedCount = payload.withUnsafeBytes { sourceBuffer in
                 output.withUnsafeMutableBytes { destinationBuffer in
                     guard let source = sourceBuffer.bindMemory(to: UInt8.self).baseAddress,
                           let destination = destinationBuffer.bindMemory(to: UInt8.self).baseAddress else {
@@ -161,7 +167,7 @@ struct KugouLyricsProvider: LyricsProvider {
                         destination,
                         capacity,
                         source,
-                        compressed.count,
+                        payload.count,
                         nil,
                         COMPRESSION_ZLIB
                     )
@@ -173,6 +179,25 @@ struct KugouLyricsProvider: LyricsProvider {
             capacity *= 2
         }
         return nil
+    }
+
+    private static func zlibDeflatePayload(from bytes: [UInt8]) -> [UInt8]? {
+        // CMF + FLG, at least one DEFLATE byte, and the four-byte Adler-32.
+        guard bytes.count >= 7 else { return nil }
+        let cmf = bytes[0]
+        let flg = bytes[1]
+        guard (cmf & 0x0f) == 8, // DEFLATE
+              (Int(cmf) * 256 + Int(flg)) % 31 == 0 else {
+            return nil
+        }
+
+        var payloadStart = 2
+        if (flg & 0x20) != 0 { // FDICT adds a four-byte dictionary identifier.
+            payloadStart += 4
+        }
+        let payloadEnd = bytes.count - 4
+        guard payloadStart < payloadEnd else { return nil }
+        return Array(bytes[payloadStart..<payloadEnd])
     }
 }
 

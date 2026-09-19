@@ -266,7 +266,7 @@ extension HTTPStubbedTests {
                 return (200, json("{\"candidates\":[{\"id\":\"10\",\"accesskey\":\"key\"}]}"))
             case "/download":
                 return (200, json("""
-                {"content":"a3JjMTjb6kFqAkSXUCeAG8joSG9GfWcBEcRa91CH/e1ydSWeQkfR9VTT"}
+                {"content":"a3JjMTjb6lmXhn6Jnn2+yEScQtsya0u+chx19iKaLV5cmB3oDARidF0vZFY6VZFOzLZ1sX2e2rdY9kZEoqgf8MXScOJWFg=="}
                 """))
             default:
                 return (404, Data())
