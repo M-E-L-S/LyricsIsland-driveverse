@@ -263,7 +263,7 @@ extension HTTPStubbedTests {
         StubURLProtocol.reset { request in
             switch request.url?.path {
             case "/search":
-                return (200, json("""{"candidates":[{"id":"10","accesskey":"key"}]}"""))
+                return (200, json("{\"candidates\":[{\"id\":\"10\",\"accesskey\":\"key\"}]}"))
             case "/download":
                 return (200, json("""
                 {"content":"a3JjMTjb6kFqAkSXUCeAG8joSG9GfWcBEcRa91CH/e1ydSWeQkfR9VTT"}
