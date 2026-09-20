@@ -63,6 +63,13 @@ import Foundation
             secondaryRequirement: .transliteration
         )
         #expect(translation != transliteration)
+        #expect(translation.contains("selection-v\(LyricsCache.selectionAlgorithmVersion)"))
+
+        let manual = LyricsCache.manualKey(
+            trackSignature: "song|artist|40",
+            secondaryRequirement: .translation
+        )
+        #expect(!manual.contains("selection-v"))
     }
 
     @Test func expiresAfterThirtyDays() {

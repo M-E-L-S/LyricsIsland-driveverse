@@ -159,7 +159,7 @@ final class LiveActivityController {
                 artworkData: nil,
                 secondaryLine: "", nextLine: "",
                 completedText: "", activeText: String(localized: "♪ Waiting for music…"),
-                remainingText: "", compactLine: String(localized: "♪ Waiting for music…"),
+                remainingText: "",
                 isPlaying: false
             )
         do {
@@ -260,7 +260,6 @@ final class LiveActivityController {
             completedText: segments.completed,
             activeText: segments.active,
             remainingText: segments.remaining,
-            compactLine: String(segments.compact.prefix(56)),
             isPlaying: state.isPlaying
         )
     }
@@ -268,18 +267,18 @@ final class LiveActivityController {
     private static func wordSegments(
         position: LyricsPosition?,
         fallback: String
-    ) -> (completed: String, active: String, remaining: String, compact: String) {
+    ) -> (completed: String, active: String, remaining: String) {
         guard let words = position?.currentWords, !words.isEmpty,
               let index = position?.currentWordIndex, words.indices.contains(index) else {
-            return ("", fallback, "", fallback)
+            return ("", fallback, "")
         }
         guard words.reduce(0, { $0 + $1.original.count }) <= 100 else {
-            return ("", fallback, "", fallback)
+            return ("", fallback, "")
         }
         let completed = words[..<index].map(\.original).joined()
         let active = words[index].original
         let remaining = words[(index + 1)...].map(\.original).joined()
-        return (completed, active, remaining, active + remaining)
+        return (completed, active, remaining)
     }
 }
 #endif

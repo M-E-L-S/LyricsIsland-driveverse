@@ -46,8 +46,19 @@ final class LyricsService {
             secondaryRequirement: requirement
         )
         let candidatesSignature = LyricsCache.candidatesKey(selectionKey: signature)
-        let manualSignature = LyricsCache.manualKey(selectionKey: signature)
-        if !forceRefresh, let manual = cache.manualSelection(signature: manualSignature) {
+        let manualSignature = LyricsCache.manualKey(
+            trackSignature: trackSignature,
+            secondaryRequirement: requirement
+        )
+        let legacyManualSignature = LyricsCache.legacyManualKey(
+            trackSignature: trackSignature,
+            secondaryRequirement: requirement
+        )
+        let manual = cache.manualSelection(signature: manualSignature)
+            ?? cache.manualSelection(signature: legacyManualSignature)
+        if !forceRefresh, let manual {
+            cache.storeManualSelection(manual, signature: manualSignature)
+            cache.remove(signature: legacyManualSignature)
             restoreCandidates(from: candidatesSignature)
             selectedCandidateID = manual.id
             isUsingManualSelection = true
@@ -88,15 +99,28 @@ final class LyricsService {
         for state: NowPlayingState,
         displayMode: LyricsDisplayMode
     ) {
-        let key = selectionKey(for: state, displayMode: displayMode)
-        cache.storeManualSelection(choice, signature: LyricsCache.manualKey(selectionKey: key))
+        let keys = trackAndRequirement(for: state, displayMode: displayMode)
+        cache.storeManualSelection(
+            choice,
+            signature: LyricsCache.manualKey(
+                trackSignature: keys.track,
+                secondaryRequirement: keys.requirement
+            )
+        )
         selectedCandidateID = choice.id
         isUsingManualSelection = true
     }
 
     func useAutomaticSelection(for state: NowPlayingState, displayMode: LyricsDisplayMode) {
-        let key = selectionKey(for: state, displayMode: displayMode)
-        cache.remove(signature: LyricsCache.manualKey(selectionKey: key))
+        let keys = trackAndRequirement(for: state, displayMode: displayMode)
+        cache.remove(signature: LyricsCache.manualKey(
+            trackSignature: keys.track,
+            secondaryRequirement: keys.requirement
+        ))
+        cache.remove(signature: LyricsCache.legacyManualKey(
+            trackSignature: keys.track,
+            secondaryRequirement: keys.requirement
+        ))
         isUsingManualSelection = false
     }
 
@@ -107,17 +131,17 @@ final class LyricsService {
         isUsingManualSelection = false
     }
 
-    private func selectionKey(for state: NowPlayingState, displayMode: LyricsDisplayMode) -> String {
-        let trackSignature = LyricsMatcher.signature(
+    private func trackAndRequirement(
+        for state: NowPlayingState,
+        displayMode: LyricsDisplayMode
+    ) -> (track: String, requirement: LyricsSecondaryRequirement) {
+        let track = LyricsMatcher.signature(
             title: state.title,
             artist: state.artist,
             durationMs: state.durationMs,
             album: state.album
         )
-        return LyricsCache.selectionKey(
-            trackSignature: trackSignature,
-            secondaryRequirement: LyricsSecondaryRequirement(displayMode: displayMode)
-        )
+        return (track, LyricsSecondaryRequirement(displayMode: displayMode))
     }
 
     private func restoreCandidates(from signature: String) {

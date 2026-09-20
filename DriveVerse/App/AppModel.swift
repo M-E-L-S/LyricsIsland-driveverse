@@ -27,6 +27,7 @@ final class AppModel: ObservableObject {
     private static let displayModeKey = "lyricsDisplayMode"
     private static let chineseConversionKey = "lyricsChineseConversion"
     private static let timingOffsetKey = "lyricsTimingOffsetMs"
+    private static let lyricsEnabledKey = "lyricsEnabled"
 
     // MARK: UI state
 
@@ -39,6 +40,21 @@ final class AppModel: ObservableObject {
     @Published private(set) var position: LyricsPosition?
     @Published private(set) var appleMusicAuth: MediaAuthStatus = .unknown
     @Published var errorMessage: String?
+    @Published var lyricsEnabled: Bool {
+        didSet {
+            defaults.set(lyricsEnabled, forKey: Self.lyricsEnabledKey)
+            if lyricsEnabled {
+#if os(iOS)
+                liveActivity.holdWhilePaused = driveMode
+#endif
+                currentSignature = nil
+                if let state = nowPlaying { fetchLyrics(for: state) }
+                syncLiveActivity()
+            } else {
+                disableLyrics()
+            }
+        }
+    }
     @Published var lyricsDisplayMode: LyricsDisplayMode {
         didSet {
             defaults.set(lyricsDisplayMode.rawValue, forKey: Self.displayModeKey)
@@ -65,12 +81,12 @@ final class AppModel: ObservableObject {
     @Published var driveMode = false {
         didSet {
 #if os(iOS)
-            liveActivity.holdWhilePaused = driveMode
+            liveActivity.holdWhilePaused = driveMode && lyricsEnabled
 #if canImport(ActivityKit)
-            // Without this Settings toggle the frequent-updates Info.plist
-            // key is inert and ActivityKit's standard budget silently
-            // freezes the tile after roughly a minute of lyric updates.
-            if driveMode, !ActivityAuthorizationInfo().frequentPushesEnabled {
+            // Surface the system's frequent-update preference. ActivityKit
+            // still controls rendering cadence, and Apple documents this
+            // preference primarily for ActivityKit push notifications.
+            if driveMode, lyricsEnabled, !ActivityAuthorizationInfo().frequentPushesEnabled {
                 errorMessage = String(localized: "For smooth lyrics, turn on Settings → DriveVerse → Live Activities → More Frequent Updates.")
             }
 #endif
@@ -106,6 +122,7 @@ final class AppModel: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        lyricsEnabled = defaults.object(forKey: Self.lyricsEnabledKey) as? Bool ?? true
         lyricsDisplayMode = defaults.string(forKey: Self.displayModeKey)
             .flatMap(LyricsDisplayMode.init(rawValue:)) ?? .originalAndTranslation
         chineseConversion = defaults.string(forKey: Self.chineseConversionKey)
@@ -163,8 +180,10 @@ final class AppModel: ObservableObject {
     func startDriveSession() {
 #if os(iOS)
         start()
-        liveActivity.beginSession(state: nowPlaying, position: position)
         driveMode = true
+        if lyricsEnabled {
+            liveActivity.beginSession(state: nowPlaying, position: position)
+        }
         foregroundResync()
 #endif
     }
@@ -211,7 +230,7 @@ final class AppModel: ObservableObject {
     }
 
     func retryLyrics() {
-        guard let state = nowPlaying else { return }
+        guard lyricsEnabled, let state = nowPlaying else { return }
         lyricsService.useAutomaticSelection(for: state, displayMode: lyricsDisplayMode)
         currentSignature = LyricsMatcher.signature(
             title: state.title,
@@ -223,7 +242,7 @@ final class AppModel: ObservableObject {
     }
 
     func selectLyricsCandidate(_ choice: LyricsCandidateChoice) {
-        guard let state = nowPlaying else { return }
+        guard lyricsEnabled, let state = nowPlaying else { return }
         lyricsService.select(choice, for: state, displayMode: lyricsDisplayMode)
         selectedLyricsCandidateID = choice.id
         isUsingManualLyrics = true
@@ -231,7 +250,7 @@ final class AppModel: ObservableObject {
     }
 
     func useAutomaticLyrics() {
-        guard let state = nowPlaying else { return }
+        guard lyricsEnabled, let state = nowPlaying else { return }
         lyricsService.useAutomaticSelection(for: state, displayMode: lyricsDisplayMode)
         fetchLyrics(for: state)
     }
@@ -287,6 +306,11 @@ final class AppModel: ObservableObject {
             return
         }
 
+        guard lyricsEnabled else {
+            currentSignature = nil
+            return
+        }
+
         let signature = LyricsMatcher.signature(
             title: state.title,
             artist: state.artist,
@@ -311,6 +335,10 @@ final class AppModel: ObservableObject {
     /// word/line changes and play/pause flips reach ActivityKit.
     private func syncLiveActivity() {
 #if os(iOS)
+        guard lyricsEnabled else {
+            updateKeepAlive()
+            return
+        }
         var hasSyncedLyrics = false
         if case .synced = lyricsState { hasSyncedLyrics = true }
         liveActivity.sync(state: nowPlaying, position: position, hasSyncedLyrics: hasSyncedLyrics)
@@ -327,7 +355,7 @@ final class AppModel: ObservableObject {
     /// off when leaving the car.
     private func updateKeepAlive() {
 #if os(iOS)
-        let shouldRun = driveMode
+        let shouldRun = driveMode && lyricsEnabled
         if shouldRun && !backgroundKeeper.isRunning {
             do {
                 try backgroundKeeper.start()
@@ -342,6 +370,7 @@ final class AppModel: ObservableObject {
     }
 
     private func fetchLyrics(for state: NowPlayingState, forceRefresh: Bool = false) {
+        guard lyricsEnabled else { return }
         lyricsTask?.cancel()
         syncEngine.setLyrics([])
         lyricsState = .loading
@@ -372,6 +401,23 @@ final class AppModel: ObservableObject {
                 Self.log.warning("lyrics fetch failed for \(state.title.prefix(12), privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
+    }
+
+    private func disableLyrics() {
+        lyricsTask?.cancel()
+        lyricsTask = nil
+        currentSignature = nil
+        syncEngine.setLyrics([])
+        lyricsState = .idle
+        currentLyricsSource = nil
+        lyricsCandidates = []
+        selectedLyricsCandidateID = nil
+        isUsingManualLyrics = false
+#if os(iOS)
+        liveActivity.holdWhilePaused = false
+        Task { await liveActivity.endNow() }
+#endif
+        updateKeepAlive()
     }
 
     private func applyLyricsContent(_ result: LyricsContent) {

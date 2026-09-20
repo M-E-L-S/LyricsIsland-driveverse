@@ -25,6 +25,14 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "歌詞快取已清除" } }
       }
     },
+    "Enable lyrics" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable lyrics" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "启用歌词" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟用歌詞" } }
+      }
+    },
     "Check your connection." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -170,6 +178,14 @@
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Lyrics" } },
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "歌词" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "歌詞" } }
+      }
+    },
+    "Lyrics are disabled" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Lyrics are disabled" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "歌词已关闭" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "歌詞已關閉" } }
       }
     },
     "Lyrics aren't time-synced for this track" : {
@@ -482,6 +498,14 @@
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Tap Rematch lyrics to load candidates for a result cached by an older version." } },
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "若结果来自旧版本缓存，请点按“重新匹配歌词”以载入候选。" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "若結果來自舊版本快取，請點按「重新配對歌詞」以載入候選。" } }
+      }
+    },
+    "Turn lyrics on in Settings to search and display them." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Turn lyrics on in Settings to search and display them." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请在设置中启用歌词，以搜索并显示歌词。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "請在設定中啟用歌詞，以搜尋並顯示歌詞。" } }
       }
     },
     "Secondary text" : {

@@ -7,17 +7,21 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
+                Toggle("Enable lyrics", isOn: $model.lyricsEnabled)
+
                 Picker("Display", selection: $model.lyricsDisplayMode) {
                     ForEach(LyricsDisplayMode.allCases) { option in
                         Text(option.title).tag(option)
                     }
                 }
+                .disabled(!model.lyricsEnabled)
 
                 Picker("Chinese characters", selection: $model.chineseConversion) {
                     ForEach(ChineseConversion.allCases) { option in
                         Text(option.title).tag(option)
                     }
                 }
+                .disabled(!model.lyricsEnabled)
 
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -43,6 +47,7 @@ struct SettingsView: View {
                     }
                     .disabled(model.lyricsTimingOffsetMs == 0)
                 }
+                .disabled(!model.lyricsEnabled)
             } header: {
                 Text("Lyrics display")
             } footer: {
@@ -50,13 +55,13 @@ struct SettingsView: View {
             }
 
             Section {
-                if let source = model.currentLyricsSource {
+                if let source = model.currentLyricsSource, model.lyricsEnabled {
                     LabeledContent("Current lyrics source", value: String(localized: source.title))
                 }
                 Button("Rematch lyrics") {
                     model.retryLyrics()
                 }
-                .disabled(model.nowPlaying == nil)
+                .disabled(model.nowPlaying == nil || !model.lyricsEnabled)
 
                 Button("Clear lyrics cache") {
                     model.clearLyricsCache()
@@ -72,7 +77,7 @@ struct SettingsView: View {
                 Text("Lyrics are searched from Kugou Music, NetEase Cloud Music, then LRCLIB, and cached on this device for at most 30 days.")
             }
 
-            if model.nowPlaying != nil {
+            if model.lyricsEnabled, model.nowPlaying != nil {
                 Section {
                     if model.lyricsCandidates.isEmpty {
                         Text("Tap Rematch lyrics to load candidates for a result cached by an older version.")

@@ -23,6 +23,9 @@ private struct CachedManualSelection: Codable {
 final class LyricsCache {
     static let maxAge: TimeInterval = 30 * 24 * 3600
     static let notFoundMaxAge: TimeInterval = 24 * 3600
+    /// Increment when automatic ranking semantics change so an old winner
+    /// cannot bypass the corrected matcher for another 30 days.
+    static let selectionAlgorithmVersion = 2
 
     private let directory: URL
     private let fileManager = FileManager.default
@@ -44,15 +47,28 @@ final class LyricsCache {
         trackSignature: String,
         secondaryRequirement: LyricsSecondaryRequirement
     ) -> String {
-        "lyrics-v\(LyricsDocument.currentFormatVersion)|selection|\(secondaryRequirement.rawValue)|\(trackSignature)"
+        "lyrics-v\(LyricsDocument.currentFormatVersion)|selection-v\(selectionAlgorithmVersion)|\(secondaryRequirement.rawValue)|\(trackSignature)"
     }
 
     static func candidatesKey(selectionKey: String) -> String {
         "candidates|\(selectionKey)"
     }
 
-    static func manualKey(selectionKey: String) -> String {
-        "manual|\(selectionKey)"
+    static func manualKey(
+        trackSignature: String,
+        secondaryRequirement: LyricsSecondaryRequirement
+    ) -> String {
+        "lyrics-v\(LyricsDocument.currentFormatVersion)|manual|\(secondaryRequirement.rawValue)|\(trackSignature)"
+    }
+
+    /// Key written by the first manual-selection implementation. Keep it only
+    /// for one-way migration when the automatic selection algorithm changes.
+    static func legacyManualKey(
+        trackSignature: String,
+        secondaryRequirement: LyricsSecondaryRequirement
+    ) -> String {
+        let oldSelection = "lyrics-v\(LyricsDocument.currentFormatVersion)|selection|\(secondaryRequirement.rawValue)|\(trackSignature)"
+        return "manual|\(oldSelection)"
     }
 
     func lookup(signature: String) -> LyricsContent? {

@@ -27,7 +27,7 @@ struct LyricsLiveActivity: Widget {
                     HStack(alignment: .center, spacing: 12) {
                         ActivityArtwork(data: context.state.artworkData, size: 52)
                         VStack(alignment: .leading, spacing: 5) {
-                            LiveWordText(state: context.state)
+                            LiveLineText(state: context.state)
                                 .font(.title3.bold())
                                 .lineLimit(2)
                                 .minimumScaleFactor(0.72)
@@ -50,7 +50,7 @@ struct LyricsLiveActivity: Widget {
             } compactLeading: {
                 ActivityArtwork(data: context.state.artworkData, size: 22)
             } compactTrailing: {
-                Text(context.state.compactLine)
+                LiveLineText(state: context.state)
                     .font(.caption.bold())
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
@@ -177,6 +177,17 @@ private struct LiveWordText: View {
         Text(state.completedText).foregroundColor(.primary)
         + Text(state.activeText).foregroundColor(.accentColor)
         + Text(state.remainingText).foregroundColor(.secondary.opacity(0.55))
+    }
+}
+
+/// Dynamic Island intentionally stays line-synced. The underlying content
+/// still advances for the lock screen, but repartitioning the same words does
+/// not create a visible change here until the lyric line itself changes.
+private struct LiveLineText: View {
+    let state: LyricsAttributes.ContentState
+
+    var body: some View {
+        Text(state.completedText + state.activeText + state.remainingText)
     }
 }
 

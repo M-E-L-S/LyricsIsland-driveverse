@@ -102,6 +102,46 @@ import Testing
         #expect(selected.source == .kugou)
     }
 
+    @Test func durationErrorsInsideToleranceTieBeforeWordSyncComparison() async throws {
+        let wordSynced = LyricsCandidate(
+            identifier: "word-synced",
+            source: .netease,
+            title: "Song",
+            artists: ["Artist"],
+            album: "Album",
+            durationMs: 201_500
+        )
+        let exactLineSynced = LyricsCandidate(
+            identifier: "exact-line-synced",
+            source: .lrclib,
+            title: "Song",
+            artists: ["Artist"],
+            album: "Album",
+            durationMs: 200_000
+        )
+        let netease = FakeLyricsProvider(
+            source: .netease,
+            candidates: [wordSynced],
+            contents: [
+                "word-synced": document(source: .netease, translation: nil, wordSynced: true),
+            ]
+        )
+        let lrclib = FakeLyricsProvider(
+            source: .lrclib,
+            candidates: [exactLineSynced],
+            contents: [
+                "exact-line-synced": document(source: .lrclib, translation: nil, wordSynced: false),
+            ]
+        )
+
+        let outcome = try await LyricsSearchEngine(providers: [netease, lrclib]).search(
+            query: query,
+            secondaryRequirement: .translation
+        )
+
+        #expect(outcome.selectedCandidateID == "netease|word-synced")
+    }
+
     @Test func secondarySettingChangesPerfectCandidate() async throws {
         let translationCandidate = candidate("translation", source: .kugou)
         let romanizedCandidate = candidate("romanized", source: .kugou)
@@ -203,6 +243,64 @@ import Testing
             secondaryRequirement: .translation
         )
         #expect(evaluation.isPerfect)
+    }
+
+    @Test func chineseLyricsDoNotRequireTranslationButStillRequireTransliteration() {
+        let chinese = LyricsDocument(
+            source: .netease,
+            timing: .wordSynced,
+            lines: [LyricsLine(
+                startTimeMs: 0,
+                original: "话总说不清楚该怎么明了",
+                words: [LyricWordTiming(
+                    startTimeMs: 0, endTimeMs: 1_000,
+                    original: "话总说不清楚该怎么明了"
+                )]
+            )]
+        )
+        let match = candidate("chinese", source: .netease)
+
+        let translation = LyricsSearchEngine.evaluate(
+            candidate: match,
+            document: chinese,
+            query: query,
+            secondaryRequirement: .translation
+        )
+        let transliteration = LyricsSearchEngine.evaluate(
+            candidate: match,
+            document: chinese,
+            query: query,
+            secondaryRequirement: .transliteration
+        )
+
+        #expect(translation.secondaryMatches)
+        #expect(translation.isPerfect)
+        #expect(!transliteration.secondaryMatches)
+        #expect(!transliteration.isPerfect)
+    }
+
+    @Test func japaneseAndEnglishLyricsStillRequireTranslation() {
+        let match = candidate("foreign", source: .netease)
+        for original in ["君の名は何ですか", "Tell me why you went away"] {
+            let document = LyricsDocument(
+                source: .netease,
+                timing: .wordSynced,
+                lines: [LyricsLine(
+                    startTimeMs: 0,
+                    original: original,
+                    words: [LyricWordTiming(
+                        startTimeMs: 0, endTimeMs: 1_000, original: original
+                    )]
+                )]
+            )
+            let evaluation = LyricsSearchEngine.evaluate(
+                candidate: match,
+                document: document,
+                query: query,
+                secondaryRequirement: .translation
+            )
+            #expect(!evaluation.secondaryMatches)
+        }
     }
 
     @Test func titleMismatchRetriesWithTitleOnlyAndKeepsQualityRanking() async throws {

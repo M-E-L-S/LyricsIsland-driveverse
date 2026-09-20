@@ -113,8 +113,12 @@ struct LyricsMatchEvaluation: Codable, Equatable, Comparable {
         if lhs.titleMatches != rhs.titleMatches { return !lhs.titleMatches }
         if lhs.artistsMatch != rhs.artistsMatch { return !lhs.artistsMatch }
         if lhs.albumMatches != rhs.albumMatches { return !lhs.albumMatches }
-        if lhs.durationErrorMs != rhs.durationErrorMs {
-            return lhs.durationErrorMs > rhs.durationErrorMs
+        let lhsDurationRank = lhs.durationErrorMs <= Self.perfectDurationToleranceMs
+            ? 0 : lhs.durationErrorMs
+        let rhsDurationRank = rhs.durationErrorMs <= Self.perfectDurationToleranceMs
+            ? 0 : rhs.durationErrorMs
+        if lhsDurationRank != rhsDurationRank {
+            return lhsDurationRank > rhsDurationRank
         }
         if lhs.secondaryMatches != rhs.secondaryMatches { return !lhs.secondaryMatches }
         if lhs.isWordSynced != rhs.isWordSynced { return !lhs.isWordSynced }
@@ -405,7 +409,11 @@ struct LyricsSearchEngine {
         case .none:
             secondaryMatches = true
         case .translation:
-            secondaryMatches = document.lines.contains { $0.translation?.isEmpty == false }
+            // A translation is useful for foreign-language lyrics, but it
+            // must not force a Chinese song past an otherwise perfect
+            // word-synced match and into later providers.
+            secondaryMatches = LyricsLanguageDetector.isChinese(document)
+                || document.lines.contains { $0.translation?.isEmpty == false }
         case .transliteration:
             secondaryMatches = document.lines.contains { $0.transliteration?.isEmpty == false }
         }
@@ -442,5 +450,43 @@ struct LyricsSearchEngine {
             secondaryMatches: false,
             isWordSynced: false
         )
+    }
+}
+
+enum LyricsLanguageDetector {
+    /// Conservative script-based detection. Japanese lyrics normally include
+    /// kana, while Korean includes Hangul; both explicitly prevent a Chinese
+    /// classification even when their text also contains Han characters.
+    static func isChinese(_ document: LyricsDocument) -> Bool {
+        var han = 0
+        var kana = 0
+        var hangul = 0
+        var latin = 0
+        var inspected = 0
+
+        scan: for line in document.lines {
+            for scalar in line.original.unicodeScalars {
+                guard inspected < 1_000 else { break scan }
+                inspected += 1
+                switch scalar.value {
+                case 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF,
+                     0x20000...0x2FA1F:
+                    han += 1
+                case 0x3040...0x30FF, 0x31F0...0x31FF:
+                    kana += 1
+                case 0x1100...0x11FF, 0x3130...0x318F, 0xAC00...0xD7AF:
+                    hangul += 1
+                case 0x0041...0x005A, 0x0061...0x007A:
+                    latin += 1
+                default:
+                    break
+                }
+            }
+        }
+
+        return han >= 4
+            && kana == 0
+            && hangul == 0
+            && han >= latin
     }
 }

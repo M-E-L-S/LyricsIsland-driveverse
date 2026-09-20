@@ -89,32 +89,36 @@ private struct LyricPreviewCard: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                switch model.lyricsState {
-                case .idle:
-                    Text("Lyrics show up here").foregroundStyle(.secondary)
-                case .loading:
-                    Text("Finding lyrics…").foregroundStyle(.secondary)
-                case .synced:
-                    Text(model.position?.currentLine ?? "♪")
-                        .font(.headline)
-                        .lineLimit(2)
-                    if let secondary = model.position?.currentSecondaryLine {
-                        Text(secondary)
-                            .foregroundStyle(.secondary)
+                if !model.lyricsEnabled {
+                    Text("Lyrics are disabled").foregroundStyle(.secondary)
+                } else {
+                    switch model.lyricsState {
+                    case .idle:
+                        Text("Lyrics show up here").foregroundStyle(.secondary)
+                    case .loading:
+                        Text("Finding lyrics…").foregroundStyle(.secondary)
+                    case .synced:
+                        Text(model.position?.currentLine ?? "♪")
+                            .font(.headline)
                             .lineLimit(2)
-                    } else if let next = model.position?.nextLine {
-                        Text(next)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        if let secondary = model.position?.currentSecondaryLine {
+                            Text(secondary)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        } else if let next = model.position?.nextLine {
+                            Text(next)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    case .plain:
+                        Text("Lyrics available (not synced)").font(.headline)
+                    case .instrumental:
+                        Text("Instrumental 🎶").foregroundStyle(.secondary)
+                    case .notFound:
+                        Text("No lyrics found").foregroundStyle(.secondary)
+                    case .failed:
+                        Text("Couldn't load lyrics").foregroundStyle(.secondary)
                     }
-                case .plain:
-                    Text("Lyrics available (not synced)").font(.headline)
-                case .instrumental:
-                    Text("Instrumental 🎶").foregroundStyle(.secondary)
-                case .notFound:
-                    Text("No lyrics found").foregroundStyle(.secondary)
-                case .failed:
-                    Text("Couldn't load lyrics").foregroundStyle(.secondary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

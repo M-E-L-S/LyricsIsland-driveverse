@@ -22,9 +22,6 @@ struct LyricsAttributes: ActivityAttributes {
         var completedText: String
         var activeText: String
         var remainingText: String
-        /// Starts at the active word, making the compact island scroll in
-        /// discrete word steps without relying on local widget timers.
-        var compactLine: String
         var isPlaying: Bool
 
         private enum CodingKeys: String, CodingKey {
@@ -36,7 +33,6 @@ struct LyricsAttributes: ActivityAttributes {
             case completedText = "d"
             case activeText = "v"
             case remainingText = "m"
-            case compactLine = "q"
             case isPlaying = "x"
         }
     }

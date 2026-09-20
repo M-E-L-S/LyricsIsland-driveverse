@@ -6,34 +6,39 @@ struct LyricsScreen: View {
 
     var body: some View {
         Group {
-            switch model.lyricsState {
-            case .idle:
-                placeholder(symbol: "music.note", title: "Nothing playing",
-                            detail: "Start a song in Apple Music.")
-            case .loading:
-                ProgressView("Finding lyrics…")
-            case .synced(let document):
-                SyncedLyricsView(
-                    lines: document.lines,
-                    currentIndex: model.position?.lineIndex,
-                    playback: model.playbackAnchor ?? model.nowPlaying,
-                    timingOffsetMs: model.lyricsTimingOffsetMs,
-                    options: model.lyricsDisplayOptions
-                )
-            case .plain(let document):
-                PlainLyricsView(document: document, options: model.lyricsDisplayOptions)
-            case .instrumental:
-                placeholder(symbol: "pianokeys", title: "Instrumental",
-                            detail: "Sit back and enjoy.")
-            case .notFound:
-                placeholder(symbol: "text.magnifyingglass", title: "No lyrics found",
-                            detail: "No lyrics source has a match for this track.")
-            case .failed:
-                VStack(spacing: 12) {
-                    placeholder(symbol: "wifi.exclamationmark", title: "Couldn't load lyrics",
-                                detail: "Check your connection.")
-                    Button("Try Again") { model.retryLyrics() }
-                        .buttonStyle(.borderedProminent)
+            if !model.lyricsEnabled {
+                placeholder(symbol: "text.badge.xmark", title: "Lyrics are disabled",
+                            detail: "Turn lyrics on in Settings to search and display them.")
+            } else {
+                switch model.lyricsState {
+                case .idle:
+                    placeholder(symbol: "music.note", title: "Nothing playing",
+                                detail: "Start a song in Apple Music.")
+                case .loading:
+                    ProgressView("Finding lyrics…")
+                case .synced(let document):
+                    SyncedLyricsView(
+                        lines: document.lines,
+                        currentIndex: model.position?.lineIndex,
+                        playback: model.playbackAnchor ?? model.nowPlaying,
+                        timingOffsetMs: model.lyricsTimingOffsetMs,
+                        options: model.lyricsDisplayOptions
+                    )
+                case .plain(let document):
+                    PlainLyricsView(document: document, options: model.lyricsDisplayOptions)
+                case .instrumental:
+                    placeholder(symbol: "pianokeys", title: "Instrumental",
+                                detail: "Sit back and enjoy.")
+                case .notFound:
+                    placeholder(symbol: "text.magnifyingglass", title: "No lyrics found",
+                                detail: "No lyrics source has a match for this track.")
+                case .failed:
+                    VStack(spacing: 12) {
+                        placeholder(symbol: "wifi.exclamationmark", title: "Couldn't load lyrics",
+                                    detail: "Check your connection.")
+                        Button("Try Again") { model.retryLyrics() }
+                            .buttonStyle(.borderedProminent)
+                    }
                 }
             }
         }
