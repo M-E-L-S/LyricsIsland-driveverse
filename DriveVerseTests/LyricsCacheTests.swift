@@ -101,4 +101,35 @@ import Foundation
         cache.store(syncedContent("z"), signature: "c")
         #expect(cache.lookup(signature: "c") == syncedContent("z"))
     }
+
+    @Test func candidateListAndManualChoiceRoundTrip() {
+        let (cache, dir) = makeCache(now: Date.init)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let choice = LyricsCandidateChoice(
+            source: .kugou,
+            candidateID: "123",
+            title: "Song",
+            artists: ["Artist"],
+            album: "Album",
+            durationMs: 200_000,
+            content: syncedContent("picked"),
+            evaluation: LyricsMatchEvaluation(
+                titleMatches: true,
+                artistsMatch: true,
+                albumMatches: true,
+                durationErrorMs: 0,
+                secondaryMatches: true,
+                isWordSynced: false
+            )
+        )
+
+        cache.storeCandidateChoices([choice], selectedCandidateID: choice.id, signature: "list")
+        cache.storeManualSelection(choice, signature: "manual")
+
+        #expect(cache.candidateChoices(signature: "list")?.0 == [choice])
+        #expect(cache.candidateChoices(signature: "list")?.1 == choice.id)
+        #expect(cache.manualSelection(signature: "manual") == choice)
+        cache.remove(signature: "manual")
+        #expect(cache.manualSelection(signature: "manual") == nil)
+    }
 }

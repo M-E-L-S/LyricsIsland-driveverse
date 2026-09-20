@@ -460,6 +460,54 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "跳轉播放進度" } }
       }
     },
+    "Only candidates actually reached by lazy search are listed. A manual choice is remembered for this song and lyric display setting." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Only candidates actually reached by lazy search are listed. A manual choice is remembered for this song and lyric display setting." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "这里只列出懒惰搜索实际尝试过的候选。手动选择会按歌曲和歌词显示设置保存在本机。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "這裡只列出懶惰搜尋實際嘗試過的候選。手動選擇會按歌曲和歌詞顯示設定儲存在本機。" } }
+      }
+    },
+    "Searched lyric candidates" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Searched lyric candidates" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已搜索的歌词候选" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "已搜尋的歌詞候選" } }
+      }
+    },
+    "Tap Rematch lyrics to load candidates for a result cached by an older version." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Tap Rematch lyrics to load candidates for a result cached by an older version." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "若结果来自旧版本缓存，请点按“重新匹配歌词”以载入候选。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "若結果來自舊版本快取，請點按「重新配對歌詞」以載入候選。" } }
+      }
+    },
+    "Secondary text" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Secondary text" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "含翻译或音译" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "含翻譯或音譯" } }
+      }
+    },
+    "Use automatic match" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Use automatic match" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "恢复自动匹配" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "恢復自動匹配" } }
+      }
+    },
+    "Word synced" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Word synced" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "逐字" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "逐字" } }
+      }
+    },
     "♪ Waiting for music…" : {
       "extractionState" : "manual",
       "localizations" : {

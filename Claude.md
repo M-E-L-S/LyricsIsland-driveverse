@@ -59,8 +59,9 @@ detects seeks, and maps the position to the active lyric line.
 
 - One activity spans the listening session so background track changes remain
   updates instead of requiring a new activity request.
-- Update ActivityKit only when the track, lyric line, or play/pause state
-  changes. Do not update on every sync tick.
+- Update ActivityKit only when the track, lyric line/active word, or
+  play/pause state changes. Do not update when a sync tick leaves that state
+  unchanged.
 - Keep ActivityKit content below its payload limit.
 - Drive Mode uses an explicit, low-accuracy background location session to
   keep personal sideloaded builds alive while driving. Location values are

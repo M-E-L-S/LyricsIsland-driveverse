@@ -209,6 +209,16 @@ private func state(
         )
         #expect(position.lyricPositionMs == 10_000)
         #expect(position.currentWords?.map(\.original) == ["你", "好"])
+        #expect(position.currentWordIndex == 0)
+
+        let later = SyncEngine.position(
+            atMs: 11_500,
+            lines: [timed],
+            durationMs: 240_000,
+            isPlaying: true,
+            offsetMs: 1_000
+        )
+        #expect(later.currentWordIndex == 1)
     }
 
     @Test func nilStateClearsPosition() {

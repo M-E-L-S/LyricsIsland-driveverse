@@ -19,44 +19,43 @@ struct LyricsLiveActivity: Widget {
         ActivityConfiguration(for: LyricsAttributes.self) { context in
             // Lock screen — on iOS 26 this same presentation is shown on the
             // CarPlay screen, so it stays high-contrast and sparse:
-            // one small meta row, two text rows, a progress bar.
+            // one small meta row and two text rows.
             LockScreenLyricsView(context: context)
         } dynamicIsland: { context in
             DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) {
-                    ActivityArtwork(data: context.state.artworkData, size: 42)
-                        .padding(.leading, 4)
-                }
-                DynamicIslandExpandedRegion(.center) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        LiveWordText(state: context.state)
-                            .font(.headline)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.8)
-                        Text(context.state.secondaryLine.isEmpty
-                             ? context.state.nextLine
-                             : context.state.secondaryLine)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                DynamicIslandExpandedRegion(.center, priority: 1) {
+                    HStack(alignment: .center, spacing: 12) {
+                        ActivityArtwork(data: context.state.artworkData, size: 52)
+                        VStack(alignment: .leading, spacing: 5) {
+                            LiveWordText(state: context.state)
+                                .font(.title3.bold())
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.72)
+                            Text(context.state.secondaryLine.isEmpty
+                                 ? context.state.nextLine
+                                 : context.state.secondaryLine)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 6)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(spacing: 7) {
-                        LiveTrackProgress(state: context.state)
-                        LivePlaybackControls(isPlaying: context.state.isPlaying)
-                    }
-                    .padding(.horizontal, 4)
+                    LivePlaybackControls(isPlaying: context.state.isPlaying)
+                        .padding(.horizontal, 4)
                 }
             } compactLeading: {
                 ActivityArtwork(data: context.state.artworkData, size: 22)
             } compactTrailing: {
-                MarqueeLyricText(
-                    text: context.state.currentLine,
-                    anchor: context.state.playbackReferenceDate
-                )
-                .font(.caption2)
-                .frame(maxWidth: 72)
+                Text(context.state.compactLine)
+                    .font(.caption.bold())
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(width: 88, height: 22, alignment: .leading)
+                    .clipped()
             } minimal: {
                 ActivityArtwork(data: context.state.artworkData, size: 22)
             }
@@ -85,8 +84,7 @@ struct LockScreenLyricsView: View {
     }
 
     /// CarPlay tile / Watch Smart Stack: no room for meta chrome — the
-    /// lyric IS the content. Two rows, high contrast; controls remain in the
-    /// regular lock-screen and expanded Dynamic Island presentations.
+    /// lyric IS the content. Two rows, high contrast.
     private var smallBody: some View {
         VStack(alignment: .leading, spacing: 4) {
             LiveWordText(state: context.state)
@@ -134,8 +132,6 @@ struct LockScreenLyricsView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
 
-            LiveTrackProgress(state: context.state)
-            LivePlaybackControls(isPlaying: context.state.isPlaying)
         }
         .padding(10)
     }
@@ -172,93 +168,15 @@ private struct ActivityArtwork: View {
     }
 }
 
-/// Word highlighting is rendered from the playback anchor carried in the last
-/// Activity update. It animates locally and does not spend ActivityKit updates.
+/// ActivityKit does not reliably advance TimelineView while the app is in the
+/// background. The app therefore sends these tiny segments on word changes.
 private struct LiveWordText: View {
     let state: LyricsAttributes.ContentState
 
-    @ViewBuilder
     var body: some View {
-        if state.isPlaying, !state.currentWords.isEmpty {
-            TimelineView(.periodic(from: state.playbackReferenceDate, by: 0.08)) { timeline in
-                Text(text(at: timeline.date))
-            }
-        } else {
-            Text(text(at: state.playbackReferenceDate))
-        }
-    }
-
-    private func text(at date: Date) -> AttributedString {
-        guard !state.currentWords.isEmpty else { return AttributedString(state.currentLine) }
-        let position = state.lyricPositionMs + elapsedMs(at: date)
-        var result = AttributedString()
-        for word in state.currentWords {
-            var part = AttributedString(word.text)
-            if position >= word.endTimeMs {
-                part.foregroundColor = .primary
-            } else if position >= word.startTimeMs {
-                part.foregroundColor = .accentColor
-            } else {
-                part.foregroundColor = .secondary.opacity(0.5)
-            }
-            result.append(part)
-        }
-        return result
-    }
-
-    private func elapsedMs(at date: Date) -> Int {
-        guard state.isPlaying else { return 0 }
-        return max(0, Int(date.timeIntervalSince(state.playbackReferenceDate) * 1_000))
-    }
-}
-
-/// Compact Dynamic Island has no horizontal scroll container, so move a
-/// single fixed-size line through its clipped viewport with short end pauses.
-private struct MarqueeLyricText: View {
-    let text: String
-    let anchor: Date
-
-    var body: some View {
-        GeometryReader { geometry in
-            TimelineView(.periodic(from: anchor, by: 0.08)) { timeline in
-                Text(text)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .offset(x: offset(at: timeline.date, viewport: geometry.size.width))
-            }
-        }
-        .clipped()
-    }
-
-    private func offset(at date: Date, viewport: CGFloat) -> CGFloat {
-        let estimatedWidth = CGFloat(text.count) * 8.5
-        let travel = max(0, estimatedWidth - viewport)
-        guard travel > 0 else { return 0 }
-        let duration = max(6.0, min(16.0, Double(text.count) * 0.28))
-        let elapsed = max(0, date.timeIntervalSince(anchor))
-        let phase = elapsed.truncatingRemainder(dividingBy: duration) / duration
-        if phase < 0.15 { return 0 }
-        if phase > 0.85 { return -travel }
-        return -travel * CGFloat((phase - 0.15) / 0.70)
-    }
-}
-
-private struct LiveTrackProgress: View {
-    let state: LyricsAttributes.ContentState
-
-    var body: some View {
-        TimelineView(.periodic(from: state.playbackReferenceDate, by: 0.25)) { timeline in
-            ProgressView(value: progress(at: timeline.date))
-                .tint(.white.opacity(0.85))
-        }
-    }
-
-    private func progress(at date: Date) -> Double {
-        guard let duration = state.durationMs, duration > 0 else { return state.progress }
-        let elapsed = state.isPlaying
-            ? max(0, Int(date.timeIntervalSince(state.playbackReferenceDate) * 1_000))
-            : 0
-        return min(1, max(0, Double(state.trackPositionMs + elapsed) / Double(duration)))
+        Text(state.completedText).foregroundColor(.primary)
+        + Text(state.activeText).foregroundColor(.accentColor)
+        + Text(state.remainingText).foregroundColor(.secondary.opacity(0.55))
     }
 }
 
@@ -266,29 +184,29 @@ private struct LivePlaybackControls: View {
     let isPlaying: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Button(intent: PreviousTrackIntent()) {
                 Image(systemName: "backward.end.fill")
-                    .frame(width: 32, height: 28)
+                    .frame(width: 42, height: 38)
             }
             Button(intent: SeekPlaybackIntent(offsetSeconds: -15)) {
                 Image(systemName: "gobackward.15")
-                    .frame(width: 32, height: 28)
+                    .frame(width: 42, height: 38)
             }
             Button(intent: TogglePlaybackIntent()) {
                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .frame(width: 36, height: 28)
+                    .frame(width: 46, height: 38)
             }
             Button(intent: SeekPlaybackIntent(offsetSeconds: 15)) {
                 Image(systemName: "goforward.15")
-                    .frame(width: 32, height: 28)
+                    .frame(width: 42, height: 38)
             }
             Button(intent: NextTrackIntent()) {
                 Image(systemName: "forward.end.fill")
-                    .frame(width: 32, height: 28)
+                    .frame(width: 42, height: 38)
             }
         }
-        .font(.caption.bold())
+        .font(.title3.bold())
         .buttonStyle(.plain)
         .tint(.white)
     }

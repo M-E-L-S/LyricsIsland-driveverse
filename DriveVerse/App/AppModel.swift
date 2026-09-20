@@ -33,6 +33,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var nowPlaying: NowPlayingState?
     @Published private(set) var lyricsState: LyricsDisplayState = .idle
     @Published private(set) var currentLyricsSource: LyricsSource?
+    @Published private(set) var lyricsCandidates: [LyricsCandidateChoice] = []
+    @Published private(set) var selectedLyricsCandidateID: String?
+    @Published private(set) var isUsingManualLyrics = false
     @Published private(set) var position: LyricsPosition?
     @Published private(set) var appleMusicAuth: MediaAuthStatus = .unknown
     @Published var errorMessage: String?
@@ -209,6 +212,7 @@ final class AppModel: ObservableObject {
 
     func retryLyrics() {
         guard let state = nowPlaying else { return }
+        lyricsService.useAutomaticSelection(for: state, displayMode: lyricsDisplayMode)
         currentSignature = LyricsMatcher.signature(
             title: state.title,
             artist: state.artist,
@@ -218,8 +222,25 @@ final class AppModel: ObservableObject {
         fetchLyrics(for: state, forceRefresh: true)
     }
 
+    func selectLyricsCandidate(_ choice: LyricsCandidateChoice) {
+        guard let state = nowPlaying else { return }
+        lyricsService.select(choice, for: state, displayMode: lyricsDisplayMode)
+        selectedLyricsCandidateID = choice.id
+        isUsingManualLyrics = true
+        applyLyricsContent(choice.content)
+    }
+
+    func useAutomaticLyrics() {
+        guard let state = nowPlaying else { return }
+        lyricsService.useAutomaticSelection(for: state, displayMode: lyricsDisplayMode)
+        fetchLyrics(for: state)
+    }
+
     func clearLyricsCache() {
         lyricsService.clearCache()
+        lyricsCandidates = []
+        selectedLyricsCandidateID = nil
+        isUsingManualLyrics = false
     }
 
     func resetLyricsTimingOffset() {
@@ -260,6 +281,9 @@ final class AppModel: ObservableObject {
             syncEngine.setLyrics([])
             lyricsState = .idle
             currentLyricsSource = nil
+            lyricsCandidates = []
+            selectedLyricsCandidateID = nil
+            isUsingManualLyrics = false
             return
         }
 
@@ -283,8 +307,8 @@ final class AppModel: ObservableObject {
         syncEngine.setDisplayOptions(lyricsDisplayOptions)
     }
 
-    /// The controller's update policy dedupes the 500 ms ticks — only line
-    /// changes and play/pause flips reach ActivityKit.
+    /// The controller's update policy dedupes the 500 ms ticks — only active
+    /// word/line changes and play/pause flips reach ActivityKit.
     private func syncLiveActivity() {
 #if os(iOS)
         var hasSyncedLyrics = false
@@ -322,6 +346,9 @@ final class AppModel: ObservableObject {
         syncEngine.setLyrics([])
         lyricsState = .loading
         currentLyricsSource = nil
+        lyricsCandidates = []
+        selectedLyricsCandidateID = nil
+        isUsingManualLyrics = false
 
         lyricsTask = Task { [weak self] in
             guard let self else { return }
@@ -332,22 +359,10 @@ final class AppModel: ObservableObject {
                     forceRefresh: forceRefresh
                 )
                 guard !Task.isCancelled else { return }
-                switch result {
-                case .document(let document):
-                    self.currentLyricsSource = document.source
-                    if document.isSynchronized {
-                        self.lyricsState = .synced(document)
-                        self.syncEngine.setLyrics(document.lines)
-                    } else {
-                        self.lyricsState = .plain(document)
-                    }
-                case .instrumental:
-                    self.currentLyricsSource = nil
-                    self.lyricsState = .instrumental
-                case .notFound:
-                    self.currentLyricsSource = nil
-                    self.lyricsState = .notFound
-                }
+                self.lyricsCandidates = self.lyricsService.lastCandidates
+                self.selectedLyricsCandidateID = self.lyricsService.selectedCandidateID
+                self.isUsingManualLyrics = self.lyricsService.isUsingManualSelection
+                self.applyLyricsContent(result)
             } catch is CancellationError {
                 // superseded by a newer track — nothing to do
             } catch {
@@ -356,6 +371,28 @@ final class AppModel: ObservableObject {
                 self.lyricsState = .failed
                 Self.log.warning("lyrics fetch failed for \(state.title.prefix(12), privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
+        }
+    }
+
+    private func applyLyricsContent(_ result: LyricsContent) {
+        switch result {
+        case .document(let document):
+            currentLyricsSource = document.source
+            if document.isSynchronized {
+                lyricsState = .synced(document)
+                syncEngine.setLyrics(document.lines)
+            } else {
+                syncEngine.setLyrics([])
+                lyricsState = .plain(document)
+            }
+        case .instrumental:
+            syncEngine.setLyrics([])
+            currentLyricsSource = nil
+            lyricsState = .instrumental
+        case .notFound:
+            syncEngine.setLyrics([])
+            currentLyricsSource = nil
+            lyricsState = .notFound
         }
     }
 }

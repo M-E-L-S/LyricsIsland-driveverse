@@ -194,11 +194,12 @@ final class AppleMusicSource {
         subject.send(AppleMusicStateMapper.state(from: snapshot, capturedAt: Date()))
     }
 
-    /// ActivityKit's complete dynamic state must stay below 4 KB. A tiny JPEG
-    /// leaves room for lyrics, word timings, and playback metadata.
+    /// ActivityKit's complete dynamic state must stay below 4 KB. The live
+    /// state now carries only pre-rendered lyric segments, leaving enough room
+    /// for a recognisable JPEG instead of dropping nearly every artwork image.
     private static func compactArtworkData(_ artwork: MPMediaItemArtwork?) -> Data? {
         guard let artwork else { return nil }
-        let sides: [CGFloat] = [36, 32]
+        let sides: [CGFloat] = [48, 44, 40, 36, 32]
         let qualities: [CGFloat] = [0.6, 0.4, 0.25, 0.15]
         for side in sides {
             let size = CGSize(width: side, height: side)
@@ -210,7 +211,7 @@ final class AppleMusicSource {
                 source.draw(in: CGRect(origin: .zero, size: size))
             }
             for quality in qualities {
-                if let data = image.jpegData(compressionQuality: quality), data.count <= 900 {
+                if let data = image.jpegData(compressionQuality: quality), data.count <= 1_600 {
                     return data
                 }
             }

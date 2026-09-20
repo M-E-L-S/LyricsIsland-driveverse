@@ -6,6 +6,17 @@ struct CachedLyrics: Codable, Equatable {
     let storedAt: Date
 }
 
+private struct CachedCandidateChoices: Codable {
+    let choices: [LyricsCandidateChoice]
+    let selectedCandidateID: String?
+    let storedAt: Date
+}
+
+private struct CachedManualSelection: Codable {
+    let choice: LyricsCandidateChoice
+    let storedAt: Date
+}
+
 /// Disk cache for structured lyric lookups, keyed by format version, provider,
 /// and normalized track signature. Entries are never served past 30 days.
 /// Negative results (`notFound`) are retried after a day.
@@ -36,6 +47,14 @@ final class LyricsCache {
         "lyrics-v\(LyricsDocument.currentFormatVersion)|selection|\(secondaryRequirement.rawValue)|\(trackSignature)"
     }
 
+    static func candidatesKey(selectionKey: String) -> String {
+        "candidates|\(selectionKey)"
+    }
+
+    static func manualKey(selectionKey: String) -> String {
+        "manual|\(selectionKey)"
+    }
+
     func lookup(signature: String) -> LyricsContent? {
         let url = fileURL(for: signature)
         guard let data = try? Data(contentsOf: url),
@@ -57,6 +76,41 @@ final class LyricsCache {
         try? data.write(to: fileURL(for: signature), options: .atomic)
     }
 
+    func candidateChoices(signature: String) -> ([LyricsCandidateChoice], String?)? {
+        guard let cached: CachedCandidateChoices = decode(signature: signature),
+              isFresh(cached.storedAt) else { return nil }
+        return (cached.choices, cached.selectedCandidateID)
+    }
+
+    func storeCandidateChoices(
+        _ choices: [LyricsCandidateChoice],
+        selectedCandidateID: String?,
+        signature: String
+    ) {
+        encode(
+            CachedCandidateChoices(
+                choices: choices,
+                selectedCandidateID: selectedCandidateID,
+                storedAt: now()
+            ),
+            signature: signature
+        )
+    }
+
+    func manualSelection(signature: String) -> LyricsCandidateChoice? {
+        guard let cached: CachedManualSelection = decode(signature: signature),
+              isFresh(cached.storedAt) else { return nil }
+        return cached.choice
+    }
+
+    func storeManualSelection(_ choice: LyricsCandidateChoice, signature: String) {
+        encode(CachedManualSelection(choice: choice, storedAt: now()), signature: signature)
+    }
+
+    func remove(signature: String) {
+        try? fileManager.removeItem(at: fileURL(for: signature))
+    }
+
     func clear() {
         try? fileManager.removeItem(at: directory)
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -66,5 +120,21 @@ final class LyricsCache {
         let digest = SHA256.hash(data: Data(signature.utf8))
         let name = digest.map { String(format: "%02x", $0) }.joined()
         return directory.appendingPathComponent(name + ".json")
+    }
+
+    private func decode<Value: Decodable>(signature: String) -> Value? {
+        guard let data = try? Data(contentsOf: fileURL(for: signature)) else { return nil }
+        return try? JSONDecoder().decode(Value.self, from: data)
+    }
+
+    private func encode<Value: Encodable>(_ value: Value, signature: String) {
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        try? data.write(to: fileURL(for: signature), options: .atomic)
+    }
+
+    private func isFresh(_ storedAt: Date) -> Bool {
+        let age = now().timeIntervalSince(storedAt)
+        guard age >= 0, age < Self.maxAge else { return false }
+        return true
     }
 }

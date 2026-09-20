@@ -27,6 +27,8 @@ import Testing
 
         #expect(kugou.fetchedIDs == ["kg-1", "kg-2"])
         #expect(netease.searchCount == 0)
+        #expect(outcome.candidates.map(\.candidateID) == ["kg-1", "kg-2"])
+        #expect(outcome.selectedCandidateID == "kugou|kg-2")
         guard case .document(let selected) = outcome.content else {
             Issue.record("expected document")
             return
@@ -253,6 +255,9 @@ import Testing
             "unrelated", "title-only-incomplete", "title-only-perfect",
         ])
         #expect(outcome.attempts.last?.candidateID == "title-only-perfect")
+        #expect(outcome.candidates.map(\.candidateID) == [
+            "unrelated", "title-only-incomplete", "title-only-perfect",
+        ])
         guard case .document(let selected) = outcome.content else {
             Issue.record("expected title-only fallback document")
             return

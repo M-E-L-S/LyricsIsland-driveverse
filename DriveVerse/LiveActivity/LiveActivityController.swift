@@ -17,10 +17,10 @@ import os
 @MainActor
 final class LiveActivityController {
     static let endDelay: TimeInterval = 30
-    /// Rapid line changes are coalesced (never dropped) to one update per
-    /// this interval; the newest line always lands, at worst this late.
+    /// Rapid line/word changes are coalesced (never dropped) to one update per
+    /// this interval; the newest lyric state always lands, at worst this late.
     /// Track changes and play/pause flips always send immediately.
-    static let minLineUpdateInterval: TimeInterval = 1.5
+    static let minLineUpdateInterval: TimeInterval = 0.45
 
     private static let log = Logger(subsystem: "io.github.mels.driveverse", category: "activity")
 
@@ -100,6 +100,7 @@ final class LiveActivityController {
         let policyWantsUpdate = policy.shouldUpdate(
             trackKey: key,
             lineIndex: position?.lineIndex,
+            wordIndex: position?.currentWordIndex,
             isPlaying: state.isPlaying
         )
         guard seekedWithinLine || policyWantsUpdate else { return }
@@ -156,11 +157,10 @@ final class LiveActivityController {
             ?? LyricsAttributes.ContentState(
                 title: "DriveVerse", artist: "",
                 artworkData: nil,
-                currentLine: String(localized: "♪ Waiting for music…"),
                 secondaryLine: "", nextLine: "",
-                currentWords: [], trackPositionMs: 0, lyricPositionMs: 0,
-                playbackReferenceDate: Date(), durationMs: nil,
-                progress: 0, isPlaying: false
+                completedText: "", activeText: String(localized: "♪ Waiting for music…"),
+                remainingText: "", compactLine: String(localized: "♪ Waiting for music…"),
+                isPlaying: false
             )
         do {
             let requested = try Activity.request(
@@ -178,6 +178,7 @@ final class LiveActivityController {
                 policy.seed(
                     trackKey: Self.key(for: state),
                     lineIndex: position?.lineIndex,
+                    wordIndex: position?.currentWordIndex,
                     isPlaying: state.isPlaying
                 )
             } else {
@@ -248,37 +249,37 @@ final class LiveActivityController {
     }
 
     private static func content(state: NowPlayingState, position: LyricsPosition?) -> LyricsAttributes.ContentState {
-        LyricsAttributes.ContentState(
-            title: String(state.title.prefix(64)),
-            artist: String(state.artist.prefix(64)),
+        let line = String((position?.currentLine ?? "♪ \(state.title)").prefix(100))
+        let segments = wordSegments(position: position, fallback: line)
+        return LyricsAttributes.ContentState(
+            title: String(state.title.prefix(48)),
+            artist: String(state.artist.prefix(48)),
             artworkData: state.artworkData,
-            currentLine: String((position?.currentLine ?? "♪ \(state.title)").prefix(120)),
-            secondaryLine: String((position?.currentSecondaryLine ?? "").prefix(100)),
-            nextLine: String((position?.nextLine ?? "").prefix(100)),
-            currentWords: activityWords(position?.currentWords),
-            trackPositionMs: position?.positionMs ?? state.positionMs,
-            lyricPositionMs: position?.lyricPositionMs ?? state.positionMs,
-            playbackReferenceDate: Date(),
-            durationMs: state.durationMs,
-            progress: position?.trackProgress ?? 0,
+            secondaryLine: String((position?.currentSecondaryLine ?? "").prefix(72)),
+            nextLine: String((position?.nextLine ?? "").prefix(72)),
+            completedText: segments.completed,
+            activeText: segments.active,
+            remainingText: segments.remaining,
+            compactLine: String(segments.compact.prefix(56)),
             isPlaying: state.isPlaying
         )
     }
 
-    private static func activityWords(_ words: [LyricWordTiming]?) -> [LyricsAttributes.Word] {
-        guard let words,
-              words.count <= 24,
-              words.allSatisfy({ $0.original.count <= 16 }),
-              words.reduce(0, { $0 + $1.original.utf8.count }) <= 256 else {
-            return []
+    private static func wordSegments(
+        position: LyricsPosition?,
+        fallback: String
+    ) -> (completed: String, active: String, remaining: String, compact: String) {
+        guard let words = position?.currentWords, !words.isEmpty,
+              let index = position?.currentWordIndex, words.indices.contains(index) else {
+            return ("", fallback, "", fallback)
         }
-        return words.map {
-            LyricsAttributes.Word(
-                text: $0.original,
-                startTimeMs: $0.startTimeMs,
-                endTimeMs: $0.endTimeMs
-            )
+        guard words.reduce(0, { $0 + $1.original.count }) <= 100 else {
+            return ("", fallback, "", fallback)
         }
+        let completed = words[..<index].map(\.original).joined()
+        let active = words[index].original
+        let remaining = words[(index + 1)...].map(\.original).joined()
+        return (completed, active, remaining, active + remaining)
     }
 }
 #endif

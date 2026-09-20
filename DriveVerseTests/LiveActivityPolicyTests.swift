@@ -35,6 +35,22 @@ import Testing
         #expect(resumed)
     }
 
+    @Test func wordChangeTriggersUpdateWithoutLineChange() {
+        var policy = LiveActivityUpdatePolicy()
+        let first = policy.shouldUpdate(
+            trackKey: "a", lineIndex: 3, wordIndex: 0, isPlaying: true
+        )
+        let repeated = policy.shouldUpdate(
+            trackKey: "a", lineIndex: 3, wordIndex: 0, isPlaying: true
+        )
+        let nextWord = policy.shouldUpdate(
+            trackKey: "a", lineIndex: 3, wordIndex: 1, isPlaying: true
+        )
+        #expect(first)
+        #expect(!repeated)
+        #expect(nextWord)
+    }
+
     @Test func trackChangeTriggersUpdate() {
         // Regression: a backgrounded song switch is a plain update on the
         // session-long activity — the policy must let it through even when

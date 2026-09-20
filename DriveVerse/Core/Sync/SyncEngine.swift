@@ -8,6 +8,7 @@ struct LyricsPosition: Equatable {
     let currentLine: String?
     let currentSecondaryLine: String?
     let currentWords: [LyricWordTiming]?
+    let currentWordIndex: Int?
     let nextLine: String?
     let nextSecondaryLine: String?
     /// 0–1 through the current line's time window.
@@ -151,6 +152,9 @@ final class SyncEngine {
                 )
             }
         }
+        let currentWordIndex = currentWords?.lastIndex {
+            lyricPositionMs >= $0.startTimeMs
+        }
         let nextIndex: Int?
         if let index {
             nextIndex = index + 1 < lines.count ? index + 1 : nil
@@ -180,7 +184,7 @@ final class SyncEngine {
         return LyricsPosition(
             positionMs: pos, lyricPositionMs: lyricPositionMs, lineIndex: index,
             currentLine: currentLine, currentSecondaryLine: currentSecondaryLine,
-            currentWords: currentWords,
+            currentWords: currentWords, currentWordIndex: currentWordIndex,
             nextLine: nextLine, nextSecondaryLine: nextSecondaryLine,
             lineProgress: lineProgress, trackProgress: trackProgress,
             isPlaying: isPlaying

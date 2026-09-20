@@ -6,6 +6,9 @@ final class LyricsService {
     private let searchEngine: LyricsSearchEngine
     private let cache: LyricsCache
     private(set) var lastAttempts: [LyricsSearchAttempt] = []
+    private(set) var lastCandidates: [LyricsCandidateChoice] = []
+    private(set) var selectedCandidateID: String?
+    private(set) var isUsingManualSelection = false
 
     init(
         providers: [any LyricsProvider] = [
@@ -42,7 +45,18 @@ final class LyricsService {
             trackSignature: trackSignature,
             secondaryRequirement: requirement
         )
+        let candidatesSignature = LyricsCache.candidatesKey(selectionKey: signature)
+        let manualSignature = LyricsCache.manualKey(selectionKey: signature)
+        if !forceRefresh, let manual = cache.manualSelection(signature: manualSignature) {
+            restoreCandidates(from: candidatesSignature)
+            selectedCandidateID = manual.id
+            isUsingManualSelection = true
+            lastAttempts = []
+            return manual.content
+        }
         if !forceRefresh, let hit = cache.lookup(signature: signature) {
+            restoreCandidates(from: candidatesSignature)
+            isUsingManualSelection = false
             lastAttempts = []
             return hit
         }
@@ -57,12 +71,63 @@ final class LyricsService {
             secondaryRequirement: requirement
         )
         lastAttempts = outcome.attempts
+        lastCandidates = outcome.candidates
+        selectedCandidateID = outcome.selectedCandidateID
+        isUsingManualSelection = false
         cache.store(outcome.content, signature: signature)
+        cache.storeCandidateChoices(
+            outcome.candidates,
+            selectedCandidateID: outcome.selectedCandidateID,
+            signature: candidatesSignature
+        )
         return outcome.content
+    }
+
+    func select(
+        _ choice: LyricsCandidateChoice,
+        for state: NowPlayingState,
+        displayMode: LyricsDisplayMode
+    ) {
+        let key = selectionKey(for: state, displayMode: displayMode)
+        cache.storeManualSelection(choice, signature: LyricsCache.manualKey(selectionKey: key))
+        selectedCandidateID = choice.id
+        isUsingManualSelection = true
+    }
+
+    func useAutomaticSelection(for state: NowPlayingState, displayMode: LyricsDisplayMode) {
+        let key = selectionKey(for: state, displayMode: displayMode)
+        cache.remove(signature: LyricsCache.manualKey(selectionKey: key))
+        isUsingManualSelection = false
     }
 
     func clearCache() {
         cache.clear()
+        lastCandidates = []
+        selectedCandidateID = nil
+        isUsingManualSelection = false
+    }
+
+    private func selectionKey(for state: NowPlayingState, displayMode: LyricsDisplayMode) -> String {
+        let trackSignature = LyricsMatcher.signature(
+            title: state.title,
+            artist: state.artist,
+            durationMs: state.durationMs,
+            album: state.album
+        )
+        return LyricsCache.selectionKey(
+            trackSignature: trackSignature,
+            secondaryRequirement: LyricsSecondaryRequirement(displayMode: displayMode)
+        )
+    }
+
+    private func restoreCandidates(from signature: String) {
+        if let cached = cache.candidateChoices(signature: signature) {
+            lastCandidates = cached.0
+            selectedCandidateID = cached.1
+        } else {
+            lastCandidates = []
+            selectedCandidateID = nil
+        }
     }
 
     static func structure(_ result: LyricsFetchResult, source: LyricsSource) -> LyricsContent {

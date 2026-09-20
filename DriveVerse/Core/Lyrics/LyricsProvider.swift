@@ -90,7 +90,7 @@ enum LyricsSecondaryRequirement: String, Codable, Equatable {
 
 /// A lexicographic evaluation. This intentionally is not a weighted score:
 /// a later attribute can never outweigh an earlier one.
-struct LyricsMatchEvaluation: Equatable, Comparable {
+struct LyricsMatchEvaluation: Codable, Equatable, Comparable {
     static let perfectDurationToleranceMs = 3_000
 
     let titleMatches: Bool
@@ -128,6 +128,22 @@ struct LyricsMatch {
     let evaluation: LyricsMatchEvaluation
 }
 
+/// A fully fetched candidate that can be previewed and selected by the user.
+/// Only candidates reached by the existing lazy search are recorded; building
+/// this list never causes an extra provider request.
+struct LyricsCandidateChoice: Codable, Equatable, Identifiable {
+    let source: LyricsSource
+    let candidateID: String
+    let title: String
+    let artists: [String]
+    let album: String?
+    let durationMs: Int?
+    let content: LyricsContent
+    let evaluation: LyricsMatchEvaluation
+
+    var id: String { "\(source.rawValue)|\(candidateID)" }
+}
+
 struct LyricsSearchAttempt: Equatable {
     enum Result: Equatable {
         case candidate(LyricsMatchEvaluation)
@@ -143,6 +159,8 @@ struct LyricsSearchAttempt: Equatable {
 struct LyricsSearchOutcome {
     let content: LyricsContent
     let attempts: [LyricsSearchAttempt]
+    let candidates: [LyricsCandidateChoice]
+    let selectedCandidateID: String?
 }
 
 enum LyricsSearchError: Error {
@@ -175,19 +193,41 @@ struct LyricsSearchEngine {
             secondaryRequirement: secondaryRequirement
         )
         let attempts = primary.outcome.attempts + titleOnly.outcome.attempts
+        let candidates = Self.merging(primary.outcome.candidates, titleOnly.outcome.candidates)
         switch titleOnly.outcome.content {
         case .document(_):
             // Search APIs can return fuzzy results even for a title-only query.
             // Never replace one unrelated lyric with another unrelated lyric.
             guard titleOnly.selectedEvaluation?.titleMatches == true else {
-                return LyricsSearchOutcome(content: .notFound, attempts: attempts)
+                return LyricsSearchOutcome(
+                    content: .notFound, attempts: attempts,
+                    candidates: candidates, selectedCandidateID: nil
+                )
             }
-            return LyricsSearchOutcome(content: titleOnly.outcome.content, attempts: attempts)
+            return LyricsSearchOutcome(
+                content: titleOnly.outcome.content, attempts: attempts,
+                candidates: candidates,
+                selectedCandidateID: titleOnly.outcome.selectedCandidateID
+            )
         case .instrumental:
-            return LyricsSearchOutcome(content: .instrumental, attempts: attempts)
+            return LyricsSearchOutcome(
+                content: .instrumental, attempts: attempts,
+                candidates: candidates, selectedCandidateID: nil
+            )
         case .notFound:
-            return LyricsSearchOutcome(content: .notFound, attempts: attempts)
+            return LyricsSearchOutcome(
+                content: .notFound, attempts: attempts,
+                candidates: candidates, selectedCandidateID: nil
+            )
         }
+    }
+
+    private static func merging(
+        _ first: [LyricsCandidateChoice],
+        _ second: [LyricsCandidateChoice]
+    ) -> [LyricsCandidateChoice] {
+        var seen = Set(first.map(\.id))
+        return first + second.filter { seen.insert($0.id).inserted }
     }
 
     private struct SearchPass {
@@ -201,6 +241,7 @@ struct LyricsSearchEngine {
     ) async throws -> SearchPass {
         var best: LyricsMatch?
         var attempts: [LyricsSearchAttempt] = []
+        var choices: [LyricsCandidateChoice] = []
         var failedProviderCount = 0
         var foundInstrumental = false
 
@@ -249,6 +290,16 @@ struct LyricsSearchEngine {
                             candidateID: candidate.identifier,
                             result: .candidate(evaluation)
                         ))
+                        choices.append(LyricsCandidateChoice(
+                            source: provider.source,
+                            candidateID: candidate.identifier,
+                            title: candidate.title,
+                            artists: candidate.artists,
+                            album: candidate.album,
+                            durationMs: candidate.durationMs,
+                            content: content,
+                            evaluation: evaluation
+                        ))
                         let match = LyricsMatch(
                             candidate: candidate,
                             content: content,
@@ -256,7 +307,11 @@ struct LyricsSearchEngine {
                         )
                         if evaluation.isPerfect {
                             return SearchPass(
-                                outcome: LyricsSearchOutcome(content: content, attempts: attempts),
+                                outcome: LyricsSearchOutcome(
+                                    content: content, attempts: attempts,
+                                    candidates: choices,
+                                    selectedCandidateID: choices.last?.id
+                                ),
                                 selectedEvaluation: evaluation
                             )
                         }
@@ -297,13 +352,20 @@ struct LyricsSearchEngine {
 
         if let best {
             return SearchPass(
-                outcome: LyricsSearchOutcome(content: best.content, attempts: attempts),
+                outcome: LyricsSearchOutcome(
+                    content: best.content, attempts: attempts,
+                    candidates: choices,
+                    selectedCandidateID: "\(best.candidate.source.rawValue)|\(best.candidate.identifier)"
+                ),
                 selectedEvaluation: best.evaluation
             )
         }
         if foundInstrumental {
             return SearchPass(
-                outcome: LyricsSearchOutcome(content: .instrumental, attempts: attempts),
+                outcome: LyricsSearchOutcome(
+                    content: .instrumental, attempts: attempts,
+                    candidates: choices, selectedCandidateID: nil
+                ),
                 selectedEvaluation: nil
             )
         }
@@ -311,7 +373,10 @@ struct LyricsSearchEngine {
             throw LyricsSearchError.allProvidersFailed
         }
         return SearchPass(
-            outcome: LyricsSearchOutcome(content: .notFound, attempts: attempts),
+            outcome: LyricsSearchOutcome(
+                content: .notFound, attempts: attempts,
+                candidates: choices, selectedCandidateID: nil
+            ),
             selectedEvaluation: nil
         )
     }
