@@ -11,6 +11,8 @@ struct LyricsPosition: Equatable {
     let currentWordIndex: Int?
     let nextLine: String?
     let nextSecondaryLine: String?
+    /// Remaining time in the current lyric line's display window.
+    let currentLineRemainingMs: Int?
     /// 0–1 through the current line's time window.
     let lineProgress: Double
     /// 0–1 through the whole track.
@@ -169,12 +171,14 @@ final class SyncEngine {
         }
 
         var lineProgress = 0.0
+        var currentLineRemainingMs: Int?
         if let index {
             let start = lines[index].startTimeMs
             let end = lines[index].endTimeMs
                 ?? (index + 1 < lines.count ? lines[index + 1].startTimeMs : nil)
                 ?? durationMs
                 ?? (start + 5000)
+            currentLineRemainingMs = max(0, end - lyricPositionMs)
             if end > start {
                 lineProgress = min(1, max(0, Double(lyricPositionMs - start) / Double(end - start)))
             }
@@ -188,6 +192,7 @@ final class SyncEngine {
             currentLine: currentLine, currentSecondaryLine: currentSecondaryLine,
             currentWords: currentWords, currentWordIndex: currentWordIndex,
             nextLine: nextLine, nextSecondaryLine: nextSecondaryLine,
+            currentLineRemainingMs: currentLineRemainingMs,
             lineProgress: lineProgress, trackProgress: trackProgress,
             isPlaying: isPlaying
         )

@@ -148,6 +148,7 @@ private func state(
         #expect(pos?.currentSecondaryLine == "二")
         #expect(pos?.nextLine == "three")
         #expect(pos?.positionMs == 12_000)
+        #expect(pos?.currentLineRemainingMs == 8_000)
         // line window 10 s → 20 s, position 12 s ⇒ 20 %
         #expect(abs((pos?.lineProgress ?? 0) - 0.2) < 0.001)
         // track 240 s, position 12 s ⇒ 5 %

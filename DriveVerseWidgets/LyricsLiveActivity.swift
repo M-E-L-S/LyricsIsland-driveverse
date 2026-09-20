@@ -189,17 +189,19 @@ private struct LiveLineText: View {
     }
 }
 
-/// Compact Dynamic Island gets only a narrow fixed region. Word-timed lyrics
-/// advance through short animations driven by each ContentState update. A
-/// line-only lyric performs one sub-two-second pass and stops at the tail.
+/// Compact Dynamic Island always performs one line-start-to-tail pass. Word
+/// timing remains available to the Lock Screen but doesn't move this view.
 private struct CompactMarqueeLine: View {
     let state: LyricsAttributes.ContentState
 
     private let viewportWidth: CGFloat = 88
-    private let wordStepDuration = 0.22
-    private let linePassDuration = 1.8
+    private let tailRevealPadding: CGFloat = 18
 
     private var text: String { state.fullLine }
+
+    private var linePassDuration: Double {
+        max(0.12, Double(state.lineMarqueeDurationMs) / 1_000)
+    }
 
     private func measuredWidth(_ value: String) -> CGFloat {
 #if canImport(UIKit)
@@ -214,21 +216,11 @@ private struct CompactMarqueeLine: View {
     }
 
     private var travel: CGFloat {
-        max(0, measuredWidth(text) - viewportWidth)
-    }
-
-    /// Keep the active word around 55% of the compact viewport. Clamping
-    /// leaves the line anchored at its start and guarantees the final word
-    /// exposes the tail instead of scrolling into empty space.
-    private var wordOffset: CGFloat {
-        let activeCenter = measuredWidth(state.completedText)
-            + measuredWidth(state.activeText) / 2
-        let requestedTravel = max(0, activeCenter - viewportWidth * 0.55)
-        return -min(travel, requestedTravel)
+        let overflow = measuredWidth(text) - viewportWidth
+        return overflow > 0 ? overflow + tailRevealPadding : 0
     }
 
     private var targetOffset: CGFloat {
-        if state.usesWordTiming { return wordOffset }
         return state.lineMarqueeAtEnd ? -travel : 0
     }
 
@@ -241,11 +233,7 @@ private struct CompactMarqueeLine: View {
             .frame(width: viewportWidth, height: 22, alignment: .leading)
             .clipped()
             .animation(
-                state.usesWordTiming ? .linear(duration: wordStepDuration) : nil,
-                value: state.completedText
-            )
-            .animation(
-                state.usesWordTiming ? nil : .linear(duration: linePassDuration),
+                .linear(duration: linePassDuration),
                 value: state.lineMarqueeAtEnd
             )
     }
@@ -257,7 +245,7 @@ private extension LyricsAttributes.ContentState {
     }
 
     var marqueeIdentity: String {
-        "\(title)|\(lineIndex ?? -1)|\(usesWordTiming)|\(fullLine)"
+        "\(title)|\(lineIndex ?? -1)|\(fullLine)"
     }
 
     /// Excludes the compact-only marquee phase so its second state update

@@ -39,6 +39,8 @@ final class LiveActivityController {
     private var lastSentPositionMs: Int?
     private var lastSentAt: Date?
     private var lineMarqueeAtEnd = false
+    private var lineMarqueeDelay: TimeInterval = 0.5
+    private var lineMarqueeDuration: TimeInterval = 1.8
 
     /// While Drive Mode is on the session must survive arbitrary pauses:
     /// hold the activity (pause glyph) instead of ending it after the grace
@@ -66,6 +68,8 @@ final class LiveActivityController {
         cancelPendingUpdate()
         cancelLineMarquee()
         lineMarqueeAtEnd = false
+        lineMarqueeDelay = 0.5
+        lineMarqueeDuration = 1.8
         latestContent = nil
         throttle = LiveActivityUpdateThrottle(minInterval: Self.minUpdateInterval)
     }
@@ -108,10 +112,15 @@ final class LiveActivityController {
         let trackChanged = key != lastSentTrackKey
         let lineChanged = key == lastSentTrackKey
             && position?.lineIndex != lastSentLineIndex
-        let startsLineMarquee = !wordUpdatesEnabled && (trackChanged || lineChanged)
+        let startsLineMarquee = trackChanged || lineChanged
         if startsLineMarquee {
             cancelLineMarquee()
             lineMarqueeAtEnd = false
+            let timing = Self.marqueeTiming(
+                remainingMs: position?.currentLineRemainingMs
+            )
+            lineMarqueeDelay = timing.delay
+            lineMarqueeDuration = timing.duration
         }
         let seekedWithinLine: Bool
         if wordUpdatesEnabled,
@@ -145,7 +154,8 @@ final class LiveActivityController {
             state: state,
             position: position,
             wordUpdatesEnabled: wordUpdatesEnabled,
-            lineMarqueeAtEnd: lineMarqueeAtEnd
+            lineMarqueeAtEnd: lineMarqueeAtEnd,
+            lineMarqueeDuration: lineMarqueeDuration
         )
         latestContent = content
 
@@ -163,6 +173,7 @@ final class LiveActivityController {
             scheduleLineMarqueeEnd(
                 expectedTrackKey: key,
                 expectedLineIndex: position?.lineIndex,
+                delay: lineMarqueeDelay,
                 on: activity
             )
         }
@@ -194,13 +205,13 @@ final class LiveActivityController {
     private func scheduleLineMarqueeEnd(
         expectedTrackKey: String,
         expectedLineIndex: Int?,
+        delay: TimeInterval,
         on activity: Activity<LyricsAttributes>
     ) {
         lineMarqueeTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(0.5))
+            try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled, let self,
                   self.activity?.id == activity.id,
-                  !self.wordUpdatesEnabled,
                   self.lastSentTrackKey == expectedTrackKey,
                   self.lastSentLineIndex == expectedLineIndex,
                   var content = self.latestContent else { return }
@@ -226,12 +237,16 @@ final class LiveActivityController {
     func beginSession(state: NowPlayingState?, position: LyricsPosition?) {
         guard activity == nil, ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         lineMarqueeAtEnd = false
+        let timing = Self.marqueeTiming(remainingMs: position?.currentLineRemainingMs)
+        lineMarqueeDelay = timing.delay
+        lineMarqueeDuration = timing.duration
         let content = state.map {
             Self.content(
                 state: $0,
                 position: position,
                 wordUpdatesEnabled: wordUpdatesEnabled,
-                lineMarqueeAtEnd: false
+                lineMarqueeAtEnd: false,
+                lineMarqueeDuration: lineMarqueeDuration
             )
         }
             ?? LyricsAttributes.ContentState(
@@ -241,6 +256,7 @@ final class LiveActivityController {
                 completedText: "", activeText: String(localized: "♪ Waiting for music…"),
                 remainingText: "",
                 lineIndex: nil, usesWordTiming: false, lineMarqueeAtEnd: false,
+                lineMarqueeDurationMs: 0,
                 isPlaying: false
             )
         latestContent = content
@@ -264,13 +280,12 @@ final class LiveActivityController {
                     wordIndex: wordUpdatesEnabled ? position?.currentWordIndex : nil,
                     isPlaying: state.isPlaying
                 )
-                if !wordUpdatesEnabled {
-                    scheduleLineMarqueeEnd(
-                        expectedTrackKey: Self.key(for: state),
-                        expectedLineIndex: position?.lineIndex,
-                        on: requested
-                    )
-                }
+                scheduleLineMarqueeEnd(
+                    expectedTrackKey: Self.key(for: state),
+                    expectedLineIndex: position?.lineIndex,
+                    delay: lineMarqueeDelay,
+                    on: requested
+                )
             } else {
                 lastSentTrackKey = nil
                 lastSentLineIndex = nil
@@ -350,11 +365,27 @@ final class LiveActivityController {
         "\(state.title)|\(state.artist)|\(state.album ?? "")|art:\(state.artworkData?.hashValue ?? 0)"
     }
 
+    /// Leave a short readable hold at the line start, then fit the entire
+    /// pass before the next lyric replaces it. Long lines retain the tested
+    /// 1.8 s cap; short lines proportionally compress both phases.
+    private static func marqueeTiming(
+        remainingMs: Int?
+    ) -> (delay: TimeInterval, duration: TimeInterval) {
+        let remaining = Double(max(0, remainingMs ?? 2_300)) / 1_000
+        // Reserve 250 ms for ActivityKit delivery/render latency so the
+        // visual pass normally settles before the next line update arrives.
+        let available = max(0.20, remaining - 0.25)
+        let delay = min(0.5, max(0.08, available * 0.20))
+        let duration = min(1.8, max(0.12, available - delay))
+        return (delay, duration)
+    }
+
     private static func content(
         state: NowPlayingState,
         position: LyricsPosition?,
         wordUpdatesEnabled: Bool,
-        lineMarqueeAtEnd: Bool
+        lineMarqueeAtEnd: Bool,
+        lineMarqueeDuration: TimeInterval
     ) -> LyricsAttributes.ContentState {
         let line = String((position?.currentLine ?? "♪ \(state.title)").prefix(100))
         let segments = wordSegments(
@@ -374,6 +405,7 @@ final class LiveActivityController {
             lineIndex: position?.lineIndex,
             usesWordTiming: segments.usesWordTiming,
             lineMarqueeAtEnd: lineMarqueeAtEnd,
+            lineMarqueeDurationMs: Int((lineMarqueeDuration * 1_000).rounded()),
             isPlaying: state.isPlaying
         )
     }
