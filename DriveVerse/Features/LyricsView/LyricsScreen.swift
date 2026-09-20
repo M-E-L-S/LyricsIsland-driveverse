@@ -51,22 +51,23 @@ struct LyricsScreen: View {
 
     private func compactLayout(size: CGSize) -> some View {
         VStack(spacing: 0) {
-            topBar
-            lyricsContent(viewportHeight: size.height * 0.62)
+            compactHeader
+            lyricsContent(viewportHeight: max(320, size.height - 260))
                 .frame(maxWidth: 760, maxHeight: .infinity)
             if model.nowPlaying != nil {
                 CompactNowPlayingControls()
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
-                    .padding(.bottom, 12)
-                    .background(.ultraThinMaterial)
+                    .frame(maxWidth: 560)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 8)
+                    .padding(.bottom, 10)
             }
         }
+        .frame(width: size.width, height: size.height)
     }
 
     private func wideLayout(size: CGSize) -> some View {
         VStack(spacing: 0) {
-            topBar
+            wideHeader
             HStack(spacing: 0) {
                 AlbumPlayerPane(availableSize: size)
                     .frame(width: min(440, size.width * 0.40))
@@ -81,6 +82,7 @@ struct LyricsScreen: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .frame(width: size.width, height: size.height)
     }
 
     @ViewBuilder
@@ -140,20 +142,62 @@ struct LyricsScreen: View {
         }
     }
 
-    private var topBar: some View {
-        ZStack {
-            VStack(spacing: 2) {
-                Text(model.nowPlaying?.title ?? String(localized: "Lyrics"))
-                    .font(.subheadline.bold())
-                    .lineLimit(1)
-                if let artist = model.nowPlaying?.artist, !artist.isEmpty {
-                    Text(artist)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.62))
-                        .lineLimit(1)
+    private var compactHeader: some View {
+        VStack(spacing: 18) {
+            Capsule()
+                .fill(.white.opacity(0.34))
+                .frame(width: 54, height: 5)
+                .contentShape(Rectangle().inset(by: -12))
+                .onTapGesture { dismiss() }
+
+            HStack(spacing: 14) {
+                if let state = model.nowPlaying {
+                    AlbumArtworkView(
+                        data: state.displayArtworkData ?? state.artworkData,
+                        size: 68
+                    )
+                    .shadow(color: .black.opacity(0.24), radius: 14, y: 7)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(state.title)
+                            .font(.title3.bold())
+                            .lineLimit(1)
+                        Text(state.artist)
+                            .font(.body)
+                            .foregroundStyle(.white.opacity(0.62))
+                            .lineLimit(1)
+                    }
+                } else {
+                    Text("Lyrics")
+                        .font(.title3.bold())
                 }
+
+                Spacer(minLength: 12)
+
+                Button { showsDisplayControls = true } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.title3.weight(.bold))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                }
+                .accessibilityLabel("Lyrics display settings")
             }
-            .padding(.horizontal, 62)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 32)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .gesture(dismissGesture)
+        .accessibilityAction(named: Text("Close lyrics")) { dismiss() }
+    }
+
+    private var wideHeader: some View {
+        ZStack {
+            Capsule()
+                .fill(.white.opacity(0.30))
+                .frame(width: 54, height: 5)
 
             HStack {
                 Button { dismiss() } label: {
@@ -178,14 +222,17 @@ struct LyricsScreen: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 20)
-                .onEnded { value in
-                    let isMostlyVertical = abs(value.translation.height) > abs(value.translation.width)
-                    if isMostlyVertical && value.translation.height > 80 { dismiss() }
-                }
-        )
+        .gesture(dismissGesture)
+    }
+
+    private var dismissGesture: some Gesture {
+        DragGesture(minimumDistance: 20)
+            .onEnded { value in
+                let isMostlyVertical = abs(value.translation.height) > abs(value.translation.width)
+                if isMostlyVertical && value.translation.height > 80 { dismiss() }
+            }
     }
 
     private func seek(to timeMs: Int) {
@@ -228,7 +275,7 @@ struct SyncedLyricsView: View {
     let viewportHeight: CGFloat
     let onSeek: (Int) -> Void
 
-    @ScaledMetric(relativeTo: .title) private var baseLyricSize: CGFloat = 29
+    @ScaledMetric(relativeTo: .title) private var baseLyricSize: CGFloat = 32
     @State private var followsPlayback = true
     @State private var resumeFollowingTask: Task<Void, Never>?
 
@@ -242,7 +289,7 @@ struct SyncedLyricsView: View {
                             resumeFollowingTask?.cancel()
                             onSeek(line.startTimeMs)
                             withAnimation(.snappy(duration: 0.35)) {
-                                proxy.scrollTo(index, anchor: .center)
+                                proxy.scrollTo(index, anchor: lyricFocusAnchor)
                             }
                         } label: {
                             lyricLine(line, at: index)
@@ -252,20 +299,21 @@ struct SyncedLyricsView: View {
                         .accessibilityValue(index == currentIndex ? Text("Current lyric") : Text(""))
                     }
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, max(110, viewportHeight * 0.36))
+                .padding(.horizontal, 32)
+                .padding(.top, max(52, viewportHeight * 0.18))
+                .padding(.bottom, max(180, viewportHeight * 0.76))
             }
-            .scrollIndicators(.hidden)
+            .scrollIndicators(followsPlayback ? .hidden : .visible)
             .onAppear {
                 guard let currentIndex else { return }
                 DispatchQueue.main.async {
-                    proxy.scrollTo(currentIndex, anchor: .center)
+                    proxy.scrollTo(currentIndex, anchor: lyricFocusAnchor)
                 }
             }
             .onChange(of: currentIndex) { _, newIndex in
                 guard followsPlayback, let newIndex else { return }
                 withAnimation(.snappy(duration: 0.42)) {
-                    proxy.scrollTo(newIndex, anchor: .center)
+                    proxy.scrollTo(newIndex, anchor: lyricFocusAnchor)
                 }
             }
             .onScrollPhaseChange { _, phase in
@@ -287,7 +335,7 @@ struct SyncedLyricsView: View {
                         followsPlayback = true
                         if let currentIndex {
                             withAnimation(.snappy(duration: 0.4)) {
-                                proxy.scrollTo(currentIndex, anchor: .center)
+                                proxy.scrollTo(currentIndex, anchor: lyricFocusAnchor)
                             }
                         }
                     } label: {
@@ -323,7 +371,7 @@ struct SyncedLyricsView: View {
                     Text(LyricsTextRenderer.primary(for: line, options: options))
                 }
             }
-            .font(.system(size: baseLyricSize * fontScale, weight: isCurrent ? .bold : .semibold))
+            .font(.system(size: baseLyricSize * fontScale, weight: .bold))
             .lineSpacing(2)
             .fixedSize(horizontal: false, vertical: true)
 
@@ -337,15 +385,27 @@ struct SyncedLyricsView: View {
         }
         .foregroundStyle(.white)
         .opacity(opacity(for: index))
+        .blur(radius: blurRadius(for: index))
+        .scaleEffect(isCurrent ? 1 : 0.985, anchor: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .animation(.easeOut(duration: 0.28), value: currentIndex)
     }
 
     private func opacity(for index: Int) -> Double {
-        guard let currentIndex else { return 0.48 }
+        guard let currentIndex else { return 0.40 }
         if index == currentIndex { return 1 }
-        return abs(index - currentIndex) == 1 ? 0.48 : 0.28
+        if !followsPlayback { return 0.34 }
+        return abs(index - currentIndex) == 1 ? 0.25 : 0.14
+    }
+
+    private func blurRadius(for index: Int) -> CGFloat {
+        guard followsPlayback, let currentIndex, index != currentIndex else { return 0 }
+        return abs(index - currentIndex) == 1 ? 1.2 : 2.4
+    }
+
+    private var lyricFocusAnchor: UnitPoint {
+        UnitPoint(x: 0.5, y: 0.24)
     }
 
     private func scheduleResume(using proxy: ScrollViewProxy) {
@@ -357,7 +417,7 @@ struct SyncedLyricsView: View {
             followsPlayback = true
             if let currentIndex {
                 withAnimation(.snappy(duration: 0.45)) {
-                    proxy.scrollTo(currentIndex, anchor: .center)
+                    proxy.scrollTo(currentIndex, anchor: lyricFocusAnchor)
                 }
             }
         }
@@ -408,29 +468,10 @@ private struct PlainLyricsView: View {
 // MARK: - Player chrome
 
 private struct CompactNowPlayingControls: View {
-    @EnvironmentObject private var model: AppModel
-
     var body: some View {
-        VStack(spacing: 12) {
-            if let state = model.nowPlaying {
-                HStack(spacing: 12) {
-                    AlbumArtworkView(data: state.displayArtworkData ?? state.artworkData, size: 48)
-                        .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(state.title)
-                            .font(.subheadline.bold())
-                            .lineLimit(1)
-                        Text(state.artist)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.62))
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                }
-            }
-            PlaybackControlsView(style: .immersive)
-        }
+        PlaybackControlsView(style: .immersive)
         .foregroundStyle(.white)
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -487,14 +528,26 @@ private struct LyricsBackdrop: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
-                    .blur(radius: 64)
-                    .scaleEffect(1.28)
-                    .opacity(0.78)
+                    .saturation(1.55)
+                    .contrast(1.12)
+                    .blur(radius: 58)
+                    .scaleEffect(1.34)
+                    .opacity(0.94)
             }
 #endif
-            Color.black.opacity(0.34)
+            Color.black.opacity(0.20)
+            RadialGradient(
+                colors: [.white.opacity(0.12), .clear],
+                center: .topTrailing,
+                startRadius: 20,
+                endRadius: 520
+            )
             LinearGradient(
-                colors: [.clear, .black.opacity(0.12), .black.opacity(0.52)],
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black.opacity(0.08), location: 0.48),
+                    .init(color: .black.opacity(0.66), location: 1)
+                ],
                 startPoint: .top,
                 endPoint: .bottom
             )

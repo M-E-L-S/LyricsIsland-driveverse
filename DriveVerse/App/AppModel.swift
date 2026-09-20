@@ -162,7 +162,7 @@ final class AppModel: ObservableObject {
         ))
         lyricsLineSpacing = min(34, max(
             10,
-            defaults.object(forKey: Self.lyricsLineSpacingKey) as? Double ?? 20
+            defaults.object(forKey: Self.lyricsLineSpacingKey) as? Double ?? 26
         ))
 
         let applePublisher: AnyPublisher<NowPlayingState?, Never>
