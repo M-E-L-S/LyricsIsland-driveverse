@@ -309,6 +309,20 @@ struct SyncedLyricsView: View {
                 .padding(.bottom, max(180, viewportHeight * 0.76))
             }
             .scrollIndicators(followsPlayback ? .hidden : .visible)
+            .mask {
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .white.opacity(0.42), location: 0.055),
+                        .init(color: .white, location: 0.13),
+                        .init(color: .white, location: 0.80),
+                        .init(color: .white.opacity(0.46), location: 0.91),
+                        .init(color: .clear, location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
             .onAppear {
                 guard let currentIndex else { return }
                 DispatchQueue.main.async {
@@ -317,7 +331,7 @@ struct SyncedLyricsView: View {
             }
             .onChange(of: currentIndex) { _, newIndex in
                 guard followsPlayback, let newIndex else { return }
-                withAnimation(.snappy(duration: 0.42)) {
+                withAnimation(.smooth(duration: 0.62)) {
                     proxy.scrollTo(newIndex, anchor: lyricFocusAnchor)
                 }
             }
@@ -392,6 +406,11 @@ struct SyncedLyricsView: View {
         .opacity(opacity(for: index))
         .blur(radius: blurRadius(for: index))
         .scaleEffect(isCurrent ? 1 : 0.985, anchor: .leading)
+        .modifier(SequentialLyricCatchUp(
+            lineIndex: index,
+            currentIndex: currentIndex,
+            enabled: followsPlayback
+        ))
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .animation(.easeOut(duration: 0.28), value: currentIndex)
@@ -426,6 +445,45 @@ struct SyncedLyricsView: View {
                 }
             }
         }
+    }
+}
+
+private struct SequentialLyricCatchUp: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let lineIndex: Int
+    let currentIndex: Int?
+    let enabled: Bool
+    @State private var lagOffset: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .offset(y: lagOffset)
+            .onChange(of: currentIndex) { oldIndex, newIndex in
+                guard enabled, !reduceMotion,
+                      let oldIndex, let newIndex, oldIndex != newIndex else {
+                    lagOffset = 0
+                    return
+                }
+
+                let direction: CGFloat = newIndex > oldIndex ? 1 : -1
+                let distance = min(7, abs(lineIndex - newIndex))
+                lagOffset = direction * (9 + CGFloat(distance) * 0.7)
+
+                // Commit the lag first, then let nearby rows catch the new
+                // scroll position before progressively more distant rows.
+                DispatchQueue.main.async {
+                    withAnimation(
+                        .spring(duration: 0.48, bounce: 0.06)
+                            .delay(Double(distance) * 0.028)
+                    ) {
+                        lagOffset = 0
+                    }
+                }
+            }
+            .onChange(of: enabled) { _, isEnabled in
+                if !isEnabled { lagOffset = 0 }
+            }
     }
 }
 
@@ -467,6 +525,18 @@ private struct PlainLyricsView: View {
             .padding(.vertical, 48)
         }
         .scrollIndicators(.hidden)
+        .mask {
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .white, location: 0.10),
+                    .init(color: .white, location: 0.88),
+                    .init(color: .clear, location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
     }
 }
 

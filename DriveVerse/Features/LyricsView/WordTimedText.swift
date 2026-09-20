@@ -15,21 +15,30 @@ struct WordTimedText: View {
     var pendingColor: Color = .secondary.opacity(0.45)
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !playback.isPlaying)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !playback.isPlaying)) { timeline in
             if let words = line.words, !words.isEmpty {
                 let position = SyncEngine.extrapolatedPositionMs(
                     anchor: playback,
                     at: timeline.date
                 ) - timingOffsetMs
 
+                let states = words.map { fillState(for: $0, at: position) }
+                let activeIndex = states.firstIndex(where: \.isActive)
+
                 LyricsWordFlowLayout {
-                    ForEach(Array(words.enumerated()), id: \.offset) { _, word in
+                    ForEach(Array(words.enumerated()), id: \.offset) { index, word in
                         ProgressiveWordFill(
                             text: ChineseTextConverter.convert(
                                 word.original,
                                 using: options.chineseConversion
                             ),
-                            fraction: fillFraction(for: word, at: position),
+                            fraction: states[index].fraction,
+                            isActive: states[index].isActive,
+                            previewIntensity: previewIntensity(
+                                for: index,
+                                activeIndex: activeIndex,
+                                states: states
+                            ),
                             completedColor: completedColor,
                             activeColor: activeColor,
                             pendingColor: pendingColor
@@ -45,12 +54,39 @@ struct WordTimedText: View {
         }
     }
 
-    private func fillFraction(for word: LyricWordTiming, at position: Int) -> Double {
-        if position <= word.startTimeMs { return 0 }
-        if position >= word.endTimeMs { return 1 }
+    private func fillState(for word: LyricWordTiming, at position: Int) -> WordFillState {
+        if position < word.startTimeMs {
+            return WordFillState(fraction: 0, isActive: false)
+        }
+        if position >= word.endTimeMs {
+            return WordFillState(fraction: 1, isActive: false)
+        }
         let duration = max(1, word.endTimeMs - word.startTimeMs)
-        return min(1, max(0, Double(position - word.startTimeMs) / Double(duration)))
+        return WordFillState(
+            fraction: min(1, max(0, Double(position - word.startTimeMs) / Double(duration))),
+            isActive: true
+        )
     }
+
+    private func previewIntensity(
+        for index: Int,
+        activeIndex: Int?,
+        states: [WordFillState]
+    ) -> Double {
+        guard let activeIndex, index == activeIndex + 1 else { return 0 }
+        let progress = states[activeIndex].fraction
+        let arrival = min(1, max(0, (progress - 0.52) / 0.48))
+        return smoothStep(arrival) * 0.30
+    }
+
+    private func smoothStep(_ value: Double) -> Double {
+        value * value * (3 - 2 * value)
+    }
+}
+
+private struct WordFillState {
+    let fraction: Double
+    let isActive: Bool
 }
 
 private struct ProgressiveWordFill: View {
@@ -58,6 +94,8 @@ private struct ProgressiveWordFill: View {
 
     let text: String
     let fraction: Double
+    let isActive: Bool
+    let previewIntensity: Double
     let completedColor: Color
     let activeColor: Color
     let pendingColor: Color
@@ -67,27 +105,55 @@ private struct ProgressiveWordFill: View {
             Text(text)
                 .foregroundStyle(pendingColor)
 
-            Text(text)
-                .foregroundStyle(fraction >= 1 ? completedColor : activeColor)
-                .mask {
-                    GeometryReader { geometry in
-                        HStack(spacing: 0) {
-                            if layoutDirection == .rightToLeft {
-                                Spacer(minLength: 0)
-                            }
-                            Rectangle()
-                                .frame(width: geometry.size.width * fraction)
-                                .blur(radius: 0.7)
-                            if layoutDirection != .rightToLeft {
-                                Spacer(minLength: 0)
-                            }
-                        }
+            if fraction > 0 || isActive {
+                Text(text)
+                    .foregroundStyle(fraction >= 1 ? completedColor : activeColor)
+                    .mask { fillMask }
+            }
+
+            if previewIntensity > 0 {
+                Text(text)
+                    .foregroundStyle(activeColor.opacity(previewIntensity))
+                    .mask {
+                        LinearGradient(
+                            colors: [.white, .white.opacity(0.42), .clear],
+                            startPoint: layoutDirection == .rightToLeft ? .trailing : .leading,
+                            endPoint: layoutDirection == .rightToLeft ? .leading : .trailing
+                        )
                     }
-                }
+            }
         }
         // Apple Music's completed words lift only subtly. Driving this from
         // the same fraction keeps the movement continuous within every glyph.
-        .offset(y: -1.35 * fraction)
+        .offset(y: -1.35 * easedLift)
+    }
+
+    @ViewBuilder
+    private var fillMask: some View {
+        if fraction >= 0.999 {
+            Color.white
+        } else {
+            let edge = min(1, max(0, fraction))
+            let nearFade = min(1, edge + 0.07)
+            let middleFade = min(1, edge + 0.17)
+            let farFade = min(1, edge + 0.31)
+            LinearGradient(
+                stops: [
+                    .init(color: .white, location: 0),
+                    .init(color: .white, location: edge),
+                    .init(color: .white.opacity(0.76), location: nearFade),
+                    .init(color: .white.opacity(0.28), location: middleFade),
+                    .init(color: .clear, location: farFade),
+                    .init(color: .clear, location: 1)
+                ],
+                startPoint: layoutDirection == .rightToLeft ? .trailing : .leading,
+                endPoint: layoutDirection == .rightToLeft ? .leading : .trailing
+            )
+        }
+    }
+
+    private var easedLift: Double {
+        fraction * fraction * (3 - 2 * fraction)
     }
 }
 
