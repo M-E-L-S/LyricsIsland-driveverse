@@ -519,48 +519,62 @@ private struct AlbumPlayerPane: View {
 }
 
 private struct LyricsBackdrop: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let artworkData: Data?
 
     var body: some View {
         GeometryReader { geometry in
-            ZStack {
-                LinearGradient(
-                    colors: [Color(red: 0.30, green: 0.12, blue: 0.20), .black],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+            TimelineView(.animation(minimumInterval: 1.0 / 12.0, paused: reduceMotion)) { timeline in
+                let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
+                let driftX = CGFloat(sin(time * 0.10)) * 13
+                let driftY = CGFloat(cos(time * 0.08)) * 10
+                let breathingScale = 1.35 + CGFloat(sin(time * 0.065)) * 0.018
+                let lightCenter = UnitPoint(
+                    x: 0.64 + CGFloat(sin(time * 0.055)) * 0.16,
+                    y: 0.24 + CGFloat(cos(time * 0.045)) * 0.12
                 )
+
+                ZStack {
+                    LinearGradient(
+                        colors: [Color(red: 0.30, green: 0.12, blue: 0.20), .black],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
 #if canImport(UIKit)
-                if let image = ArtworkImageCache.image(from: artworkData) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .saturation(1.55)
-                        .contrast(1.12)
-                        .blur(radius: 58)
-                        .scaleEffect(1.34)
-                        .opacity(0.94)
-                }
+                    if let image = ArtworkImageCache.image(from: artworkData) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .saturation(1.50 + sin(time * 0.07) * 0.08)
+                            .contrast(1.12)
+                            .blur(radius: 58)
+                            .scaleEffect(breathingScale)
+                            .offset(x: driftX, y: driftY)
+                            .opacity(0.94)
+                    }
 #endif
-                Color.black.opacity(0.20)
-                RadialGradient(
-                    colors: [.white.opacity(0.12), .clear],
-                    center: .topTrailing,
-                    startRadius: 20,
-                    endRadius: 520
-                )
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: .black.opacity(0.08), location: 0.48),
-                        .init(color: .black.opacity(0.66), location: 1)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+                    Color.black.opacity(0.20)
+                    RadialGradient(
+                        colors: [.white.opacity(0.13), .clear],
+                        center: lightCenter,
+                        startRadius: 12,
+                        endRadius: max(420, geometry.size.height * 0.68)
+                    )
+                    .blendMode(.softLight)
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .black.opacity(0.08), location: 0.48),
+                            .init(color: .black.opacity(0.66), location: 1)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .clipped()
             }
-            .frame(width: geometry.size.width, height: geometry.size.height)
-            .clipped()
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
