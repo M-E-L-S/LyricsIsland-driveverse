@@ -104,7 +104,7 @@ struct LockScreenLyricsView: View {
                 .transition(.push(from: .bottom))
         }
         .padding(10)
-        .animation(.smooth(duration: 0.5), value: context.state)
+        .animation(.smooth(duration: 0.5), value: context.state.visibleLyricsIdentity)
     }
 
     private var mediumBody: some View {
@@ -195,8 +195,6 @@ private struct LiveLineText: View {
 private struct CompactMarqueeLine: View {
     let state: LyricsAttributes.ContentState
 
-    @State private var showingEnd = false
-
     private let viewportWidth: CGFloat = 88
     private let wordStepDuration = 0.22
     private let linePassDuration = 1.8
@@ -231,7 +229,7 @@ private struct CompactMarqueeLine: View {
 
     private var targetOffset: CGFloat {
         if state.usesWordTiming { return wordOffset }
-        return showingEnd ? -travel : 0
+        return state.lineMarqueeAtEnd ? -travel : 0
     }
 
     var body: some View {
@@ -246,12 +244,10 @@ private struct CompactMarqueeLine: View {
                 state.usesWordTiming ? .linear(duration: wordStepDuration) : nil,
                 value: state.completedText
             )
-            .onAppear {
-                guard !state.usesWordTiming, travel > 0 else { return }
-                withAnimation(.linear(duration: linePassDuration)) {
-                    showingEnd = true
-                }
-            }
+            .animation(
+                state.usesWordTiming ? nil : .linear(duration: linePassDuration),
+                value: state.lineMarqueeAtEnd
+            )
     }
 }
 
@@ -262,6 +258,12 @@ private extension LyricsAttributes.ContentState {
 
     var marqueeIdentity: String {
         "\(title)|\(lineIndex ?? -1)|\(usesWordTiming)|\(fullLine)"
+    }
+
+    /// Excludes the compact-only marquee phase so its second state update
+    /// doesn't make the Lock Screen pulse even though no visible text changed.
+    var visibleLyricsIdentity: String {
+        "\(title)|\(artist)|\(fullLine)|\(secondaryLine)|\(nextLine)|\(isPlaying)"
     }
 }
 

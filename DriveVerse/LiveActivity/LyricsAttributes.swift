@@ -27,6 +27,9 @@ struct LyricsAttributes: ActivityAttributes {
         /// word timing selects short, state-driven animation segments.
         var lineIndex: Int?
         var usesWordTiming: Bool
+        /// Line-only compact marquee phase. A second Activity update advances
+        /// this because widget-local state is archived before it is rendered.
+        var lineMarqueeAtEnd: Bool
         var isPlaying: Bool
 
         private enum CodingKeys: String, CodingKey {
@@ -40,6 +43,7 @@ struct LyricsAttributes: ActivityAttributes {
             case remainingText = "m"
             case lineIndex = "l"
             case usesWordTiming = "w"
+            case lineMarqueeAtEnd = "e"
             case isPlaying = "x"
         }
     }

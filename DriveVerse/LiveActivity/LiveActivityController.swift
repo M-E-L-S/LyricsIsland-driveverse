@@ -30,12 +30,15 @@ final class LiveActivityController {
     private var endTask: Task<Void, Never>?
     private var stateWatcher: Task<Void, Never>?
     private var pendingTask: Task<Void, Never>?
+    private var lineMarqueeTask: Task<Void, Never>?
     private var pendingContent: LyricsAttributes.ContentState?
+    private var latestContent: LyricsAttributes.ContentState?
     private var lastSentTrackKey: String?
     private var lastSentLineIndex: Int?
     private var lastSentIsPlaying: Bool?
     private var lastSentPositionMs: Int?
     private var lastSentAt: Date?
+    private var lineMarqueeAtEnd = false
 
     /// While Drive Mode is on the session must survive arbitrary pauses:
     /// hold the activity (pause glyph) instead of ending it after the grace
@@ -61,6 +64,9 @@ final class LiveActivityController {
         lastSentPositionMs = nil
         lastSentAt = nil
         cancelPendingUpdate()
+        cancelLineMarquee()
+        lineMarqueeAtEnd = false
+        latestContent = nil
         throttle = LiveActivityUpdateThrottle(minInterval: Self.minUpdateInterval)
     }
 
@@ -99,8 +105,14 @@ final class LiveActivityController {
 
         let key = Self.key(for: state)
         let now = Date()
+        let trackChanged = key != lastSentTrackKey
         let lineChanged = key == lastSentTrackKey
             && position?.lineIndex != lastSentLineIndex
+        let startsLineMarquee = !wordUpdatesEnabled && (trackChanged || lineChanged)
+        if startsLineMarquee {
+            cancelLineMarquee()
+            lineMarqueeAtEnd = false
+        }
         let seekedWithinLine: Bool
         if wordUpdatesEnabled,
            let sentPosition = lastSentPositionMs, let sentAt = lastSentAt,
@@ -120,7 +132,7 @@ final class LiveActivityController {
         )
         guard seekedWithinLine || policyWantsUpdate else { return }
 
-        let critical = key != lastSentTrackKey
+        let critical = trackChanged
             || state.isPlaying != lastSentIsPlaying
             || lineChanged
             || seekedWithinLine
@@ -132,8 +144,10 @@ final class LiveActivityController {
         let content = Self.content(
             state: state,
             position: position,
-            wordUpdatesEnabled: wordUpdatesEnabled
+            wordUpdatesEnabled: wordUpdatesEnabled,
+            lineMarqueeAtEnd: lineMarqueeAtEnd
         )
+        latestContent = content
 
         switch throttle.decide(critical: critical, now: now) {
         case .sendNow:
@@ -144,6 +158,13 @@ final class LiveActivityController {
         case .coalesce(let fireIn):
             pendingContent = content
             armPendingUpdate(after: fireIn, on: activity)
+        }
+        if startsLineMarquee {
+            scheduleLineMarqueeEnd(
+                expectedTrackKey: key,
+                expectedLineIndex: position?.lineIndex,
+                on: activity
+            )
         }
     }
 
@@ -167,6 +188,36 @@ final class LiveActivityController {
         pendingContent = nil
     }
 
+    /// Widget-local state changes are flattened before a Live Activity view
+    /// is rendered. Submit a second compact-only phase after the line-start
+    /// state so WidgetKit has two ContentState values to interpolate.
+    private func scheduleLineMarqueeEnd(
+        expectedTrackKey: String,
+        expectedLineIndex: Int?,
+        on activity: Activity<LyricsAttributes>
+    ) {
+        lineMarqueeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(0.5))
+            guard !Task.isCancelled, let self,
+                  self.activity?.id == activity.id,
+                  !self.wordUpdatesEnabled,
+                  self.lastSentTrackKey == expectedTrackKey,
+                  self.lastSentLineIndex == expectedLineIndex,
+                  var content = self.latestContent else { return }
+            self.lineMarqueeAtEnd = true
+            content.lineMarqueeAtEnd = true
+            self.latestContent = content
+            self.throttle.noteSent(now: Date())
+            await activity.update(ActivityContent(state: content, staleDate: nil))
+            self.lineMarqueeTask = nil
+        }
+    }
+
+    private func cancelLineMarquee() {
+        lineMarqueeTask?.cancel()
+        lineMarqueeTask = nil
+    }
+
     /// Requests the session's activity. Reached two ways: from sync() once a
     /// lyric-bearing track plays in the foreground, or from the Start Drive
     /// Mode intent — the one background context iOS grants Activity.request
@@ -174,11 +225,13 @@ final class LiveActivityController {
     /// content matters because a background app can only *update* from then on.
     func beginSession(state: NowPlayingState?, position: LyricsPosition?) {
         guard activity == nil, ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        lineMarqueeAtEnd = false
         let content = state.map {
             Self.content(
                 state: $0,
                 position: position,
-                wordUpdatesEnabled: wordUpdatesEnabled
+                wordUpdatesEnabled: wordUpdatesEnabled,
+                lineMarqueeAtEnd: false
             )
         }
             ?? LyricsAttributes.ContentState(
@@ -187,9 +240,10 @@ final class LiveActivityController {
                 secondaryLine: "", nextLine: "",
                 completedText: "", activeText: String(localized: "♪ Waiting for music…"),
                 remainingText: "",
-                lineIndex: nil, usesWordTiming: false,
+                lineIndex: nil, usesWordTiming: false, lineMarqueeAtEnd: false,
                 isPlaying: false
             )
+        latestContent = content
         do {
             let requested = try Activity.request(
                 attributes: LyricsAttributes(),
@@ -210,6 +264,13 @@ final class LiveActivityController {
                     wordIndex: wordUpdatesEnabled ? position?.currentWordIndex : nil,
                     isPlaying: state.isPlaying
                 )
+                if !wordUpdatesEnabled {
+                    scheduleLineMarqueeEnd(
+                        expectedTrackKey: Self.key(for: state),
+                        expectedLineIndex: position?.lineIndex,
+                        on: requested
+                    )
+                }
             } else {
                 lastSentTrackKey = nil
                 lastSentLineIndex = nil
@@ -221,6 +282,7 @@ final class LiveActivityController {
         } catch {
             Self.log.error("Activity.request failed: \(error.localizedDescription, privacy: .public)")
             activity = nil
+            latestContent = nil
         }
     }
 
@@ -239,7 +301,10 @@ final class LiveActivityController {
                     self.lastSentLineIndex = nil
                     self.lastSentPositionMs = nil
                     self.lastSentAt = nil
+                    self.lineMarqueeAtEnd = false
+                    self.latestContent = nil
                     self.cancelPendingUpdate()
+                    self.cancelLineMarquee()
                     Self.log.warning("activity ended outside the app — background restart impossible; reopen the app or rerun the CarPlay automation")
                 }
             }
@@ -252,6 +317,7 @@ final class LiveActivityController {
         stateWatcher?.cancel()
         stateWatcher = nil
         cancelPendingUpdate()
+        cancelLineMarquee()
         guard let activity else { return }
         self.activity = nil
         policy.reset()
@@ -259,6 +325,8 @@ final class LiveActivityController {
         lastSentLineIndex = nil
         lastSentPositionMs = nil
         lastSentAt = nil
+        lineMarqueeAtEnd = false
+        latestContent = nil
         await activity.end(nil, dismissalPolicy: .immediate)
     }
 
@@ -285,7 +353,8 @@ final class LiveActivityController {
     private static func content(
         state: NowPlayingState,
         position: LyricsPosition?,
-        wordUpdatesEnabled: Bool
+        wordUpdatesEnabled: Bool,
+        lineMarqueeAtEnd: Bool
     ) -> LyricsAttributes.ContentState {
         let line = String((position?.currentLine ?? "♪ \(state.title)").prefix(100))
         let segments = wordSegments(
@@ -304,6 +373,7 @@ final class LiveActivityController {
             remainingText: segments.remaining,
             lineIndex: position?.lineIndex,
             usesWordTiming: segments.usesWordTiming,
+            lineMarqueeAtEnd: lineMarqueeAtEnd,
             isPlaying: state.isPlaying
         )
     }
