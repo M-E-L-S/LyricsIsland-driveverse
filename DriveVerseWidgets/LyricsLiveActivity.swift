@@ -196,6 +196,7 @@ private struct CompactMarqueeLine: View {
 
     private let maximumViewportWidth: CGFloat = 88
     private let minimumViewportWidth: CGFloat = 12
+    private let shortLineSafetyPadding: CGFloat = 8
     private let tailRevealPadding: CGFloat = 18
 
     private var text: String { state.fullLine }
@@ -216,15 +217,25 @@ private struct CompactMarqueeLine: View {
 #endif
     }
 
+    private var measuredTextWidth: CGFloat {
+        measuredWidth(text)
+    }
+
+    private var safeTextWidth: CGFloat {
+        measuredTextWidth + shortLineSafetyPadding
+    }
+
     /// Avoid making the system widen both sides of the compact island for a
     /// lyric that only needs a fraction of the available trailing region.
+    /// Keep extra room for glyph overhang and the island's outer clipping.
     private var viewportWidth: CGFloat {
-        min(maximumViewportWidth, max(minimumViewportWidth, measuredWidth(text)))
+        return min(maximumViewportWidth, max(minimumViewportWidth, safeTextWidth))
     }
 
     private var travel: CGFloat {
-        let overflow = measuredWidth(text) - viewportWidth
-        return overflow > 0 ? overflow + tailRevealPadding : 0
+        guard safeTextWidth > viewportWidth else { return 0 }
+        let glyphOverflow = max(0, measuredTextWidth - viewportWidth)
+        return glyphOverflow + tailRevealPadding
     }
 
     private var targetOffset: CGFloat {

@@ -386,15 +386,17 @@ final class LiveActivityController {
     }
 
     /// Device testing shows the compact trailing region holds roughly twelve
-    /// Latin characters or six CJK characters. Measure with the same font and
-    /// 88-point maximum as the widget so only actual overflow gets phase two.
+    /// Latin characters or six CJK characters. Measure with the same font,
+    /// 8-point clipping allowance, and 88-point maximum as the widget so only
+    /// actual overflow gets phase two.
     private static func compactLineNeedsMarquee(_ line: String) -> Bool {
         let base = UIFont.preferredFont(forTextStyle: .caption1)
         let descriptor = base.fontDescriptor.withSymbolicTraits(.traitBold)
             ?? base.fontDescriptor
         let font = UIFont(descriptor: descriptor, size: base.pointSize)
         let text = String(line.prefix(100)) as NSString
-        return ceil(text.size(withAttributes: [.font: font]).width) > 88
+        let safeWidth = ceil(text.size(withAttributes: [.font: font]).width) + 8
+        return safeWidth > 88
     }
 
     private static func content(
