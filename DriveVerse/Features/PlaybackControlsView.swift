@@ -2,6 +2,23 @@ import Foundation
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
+
+enum ArtworkImageCache {
+    private static let cache: NSCache<NSData, UIImage> = {
+        let cache = NSCache<NSData, UIImage>()
+        cache.countLimit = 8
+        return cache
+    }()
+
+    static func image(from data: Data?) -> UIImage? {
+        guard let data else { return nil }
+        let key = data as NSData
+        if let cached = cache.object(forKey: key) { return cached }
+        guard let image = UIImage(data: data) else { return nil }
+        cache.setObject(image, forKey: key)
+        return image
+    }
+}
 #endif
 
 struct AlbumArtworkView: View {
@@ -11,7 +28,7 @@ struct AlbumArtworkView: View {
     var body: some View {
         Group {
 #if canImport(UIKit)
-            if let data, let image = UIImage(data: data) {
+            if let image = ArtworkImageCache.image(from: data) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -36,9 +53,15 @@ struct AlbumArtworkView: View {
 }
 
 struct PlaybackControlsView: View {
+    enum Style: Equatable {
+        case standard
+        case immersive
+    }
+
     @EnvironmentObject private var model: AppModel
     @State private var draggedProgress = 0.0
     @State private var isDragging = false
+    var style: Style = .standard
 
     var body: some View {
         VStack(spacing: 10) {
@@ -59,6 +82,7 @@ struct PlaybackControlsView: View {
                         }
                     }
                 )
+                .tint(style == .immersive ? .white : .accentColor)
                 .accessibilityLabel("Playback position")
 
                 HStack {
@@ -70,7 +94,7 @@ struct PlaybackControlsView: View {
                 .foregroundStyle(.secondary)
             }
 
-            HStack(spacing: 34) {
+            HStack(spacing: style == .immersive ? 48 : 34) {
                 controlButton("backward.end.fill", label: "Previous Track") {
                     model.skipToPreviousItem()
                 }
@@ -101,13 +125,27 @@ struct PlaybackControlsView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(prominent ? .title2 : .body)
-                .frame(width: prominent ? 48 : 38, height: prominent ? 48 : 38)
-                .background(prominent ? Color.accentColor : Color.secondary.opacity(0.12), in: Circle())
-                .foregroundStyle(prominent ? Color.white : Color.primary)
+                .font(controlFont(prominent: prominent))
+                .frame(
+                    width: style == .immersive ? 58 : (prominent ? 48 : 38),
+                    height: style == .immersive ? 58 : (prominent ? 48 : 38)
+                )
+                .background {
+                    if style == .standard {
+                        Circle().fill(prominent ? Color.accentColor : Color.secondary.opacity(0.12))
+                    }
+                }
+                .foregroundStyle(style == .immersive || prominent ? Color.white : Color.primary)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+    }
+
+    private func controlFont(prominent: Bool) -> Font {
+        if style == .immersive {
+            return .system(size: prominent ? 32 : 23, weight: .semibold)
+        }
+        return prominent ? .title2 : .body
     }
 
     private func timeText(progress: Double, durationMs: Int) -> String {

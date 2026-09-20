@@ -27,6 +27,8 @@ final class AppModel: ObservableObject {
     private static let displayModeKey = "lyricsDisplayMode"
     private static let chineseConversionKey = "lyricsChineseConversion"
     private static let timingOffsetKey = "lyricsTimingOffsetMs"
+    private static let lyricsFontScaleKey = "lyricsFontScale"
+    private static let lyricsLineSpacingKey = "lyricsLineSpacing"
     private static let lyricsEnabledKey = "lyricsEnabled"
     private static let liveActivityWordUpdatesKey = "liveActivityWordUpdatesEnabled"
 
@@ -88,6 +90,19 @@ final class AppModel: ObservableObject {
             syncEngine.setOffsetMs(lyricsTimingOffsetMs)
         }
     }
+    /// Presentation-only controls for the immersive lyrics screen. Keeping
+    /// these here makes the values follow the user across launches without
+    /// changing the cached lyric document or Live Activity rendering.
+    @Published var lyricsFontScale: Double {
+        didSet {
+            defaults.set(lyricsFontScale, forKey: Self.lyricsFontScaleKey)
+        }
+    }
+    @Published var lyricsLineSpacing: Double {
+        didSet {
+            defaults.set(lyricsLineSpacing, forKey: Self.lyricsLineSpacingKey)
+        }
+    }
     @Published var driveMode = false {
         didSet {
 #if os(iOS)
@@ -141,6 +156,14 @@ final class AppModel: ObservableObject {
         chineseConversion = defaults.string(forKey: Self.chineseConversionKey)
             .flatMap(ChineseConversion.init(rawValue:)) ?? .preserve
         lyricsTimingOffsetMs = min(5_000, max(-5_000, defaults.integer(forKey: Self.timingOffsetKey)))
+        lyricsFontScale = min(1.35, max(
+            0.80,
+            defaults.object(forKey: Self.lyricsFontScaleKey) as? Double ?? 1
+        ))
+        lyricsLineSpacing = min(34, max(
+            10,
+            defaults.object(forKey: Self.lyricsLineSpacingKey) as? Double ?? 20
+        ))
 
         let applePublisher: AnyPublisher<NowPlayingState?, Never>
 #if os(iOS)

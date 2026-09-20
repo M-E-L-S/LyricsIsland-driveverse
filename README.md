@@ -27,7 +27,7 @@ Lyrics always keep their original script. When available, translations appear un
 - **Shows the current line plus its translation or the next line** as a Live Activity — the same tile appears on your **CarPlay** screen, **lock screen**, and **Dynamic Island** on iOS 26.
 - **Preserves original lyrics** with optional translation, transliteration, Simplified/Traditional Chinese conversion, and timing offset controls.
 - **Keeps working while you drive** through a "Drive Mode" that stops iOS from freezing the app in your pocket.
-- **A full-screen scrolling lyrics view** in the app itself, for passengers or when you're parked.
+- **An immersive full-screen lyrics player** with artwork-driven color, tap-to-seek, adjustable text, and scroll-follow recovery; iPad landscape gets a dedicated artwork-and-controls column.
 - **Karaoke-style word highlighting and playback controls** in the app, expanded Dynamic Island, and lock-screen Live Activity.
 - **Follows the system language** with Simplified Chinese, Traditional Chinese, and English fallback.
 

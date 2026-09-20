@@ -2,13 +2,14 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var showsLyrics = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
                     NowPlayingCard()
-                    LyricPreviewCard()
+                    LyricPreviewCard { showsLyrics = true }
                     DriveModeCard()
                     if model.appleMusicAuth == .denied {
                         InfoBanner(
@@ -32,6 +33,10 @@ struct HomeView: View {
             }
         }
         .task { model.start() }
+        .fullScreenCover(isPresented: $showsLyrics) {
+            LyricsScreen()
+                .environmentObject(model)
+        }
     }
 }
 
@@ -44,7 +49,7 @@ private struct NowPlayingCard: View {
         VStack(alignment: .leading, spacing: 8) {
             if let state = model.nowPlaying {
                 HStack(spacing: 12) {
-                    AlbumArtworkView(data: state.artworkData)
+                    AlbumArtworkView(data: state.displayArtworkData ?? state.artworkData)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(state.title)
                             .font(.title2.bold())
@@ -74,11 +79,10 @@ private struct NowPlayingCard: View {
 
 private struct LyricPreviewCard: View {
     @EnvironmentObject private var model: AppModel
+    let openLyrics: () -> Void
 
     var body: some View {
-        NavigationLink {
-            LyricsScreen()
-        } label: {
+        Button(action: openLyrics) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Label("Lyrics", systemImage: "quote.opening")
@@ -126,6 +130,7 @@ private struct LyricPreviewCard: View {
             .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)
+        .accessibilityHint("Opens the full-screen lyrics player")
     }
 }
 

@@ -556,6 +556,78 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "開啟後，DriveVerse 會為鎖定畫面和 CarPlay 積極傳送逐字更新；關閉後，所有即時動態只在歌詞換行時更新。" } }
       }
     },
+    "Close lyrics" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Close lyrics" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "关闭歌词" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "關閉歌詞" } }
+      }
+    },
+    "Current lyric" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Current lyric" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "当前歌词" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "目前歌詞" } }
+      }
+    },
+    "Done" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Done" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "完成" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "完成" } }
+      }
+    },
+    "Line spacing" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Line spacing" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "行间距" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "行距" } }
+      }
+    },
+    "Lyrics display settings" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Lyrics display settings" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "歌词显示设置" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "歌詞顯示設定" } }
+      }
+    },
+    "Opens the full-screen lyrics player" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Opens the full-screen lyrics player" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "打开全屏歌词播放器" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "開啟全螢幕歌詞播放器" } }
+      }
+    },
+    "Resume" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Resume" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "继续跟随" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "繼續跟隨" } }
+      }
+    },
+    "Text size" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Text size" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字大小" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "文字大小" } }
+      }
+    },
+    "Text" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Text" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文字" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "文字" } }
+      }
+    },
     "♪ Waiting for music…" : {
       "extractionState" : "manual",
       "localizations" : {

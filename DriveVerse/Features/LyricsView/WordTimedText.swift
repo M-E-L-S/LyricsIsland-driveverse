@@ -7,6 +7,9 @@ struct WordTimedText: View {
     let playback: NowPlayingState
     let timingOffsetMs: Int
     let options: LyricsDisplayOptions
+    var completedColor: Color = .primary
+    var activeColor: Color = .accentColor
+    var pendingColor: Color = .secondary.opacity(0.45)
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 20.0, paused: !playback.isPlaying)) { timeline in
@@ -26,11 +29,11 @@ struct WordTimedText: View {
                 using: options.chineseConversion
             ))
             if position >= word.endTimeMs {
-                part.foregroundColor = .primary
+                part.foregroundColor = completedColor
             } else if position >= word.startTimeMs {
-                part.foregroundColor = .accentColor
+                part.foregroundColor = activeColor
             } else {
-                part.foregroundColor = .secondary.opacity(0.45)
+                part.foregroundColor = pendingColor
             }
             result.append(part)
         }

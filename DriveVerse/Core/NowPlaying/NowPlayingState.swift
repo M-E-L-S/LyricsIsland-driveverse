@@ -6,6 +6,9 @@ struct NowPlayingState: Equatable {
     let album: String?
     /// Small JPEG thumbnail suitable for the Live Activity payload.
     let artworkData: Data?
+    /// A larger, app-only image. This is deliberately kept separate from the
+    /// sub-4 KB ActivityKit state used by `artworkData`.
+    let displayArtworkData: Data?
     let durationMs: Int?
     let positionMs: Int
     let isPlaying: Bool
@@ -17,6 +20,7 @@ struct NowPlayingState: Equatable {
         artist: String,
         album: String?,
         artworkData: Data? = nil,
+        displayArtworkData: Data? = nil,
         durationMs: Int?,
         positionMs: Int,
         isPlaying: Bool,
@@ -26,6 +30,7 @@ struct NowPlayingState: Equatable {
         self.artist = artist
         self.album = album
         self.artworkData = artworkData
+        self.displayArtworkData = displayArtworkData
         self.durationMs = durationMs
         self.positionMs = positionMs
         self.isPlaying = isPlaying
@@ -35,6 +40,7 @@ struct NowPlayingState: Equatable {
     func with(isPlaying: Bool) -> NowPlayingState {
         NowPlayingState(
             title: title, artist: artist, album: album, artworkData: artworkData,
+            displayArtworkData: displayArtworkData,
             durationMs: durationMs, positionMs: positionMs,
             isPlaying: isPlaying, capturedAt: capturedAt
         )

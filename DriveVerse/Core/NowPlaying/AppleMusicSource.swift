@@ -14,6 +14,7 @@ struct AppleMusicSnapshot: Equatable {
     var artist: String?
     var album: String?
     var artworkData: Data? = nil
+    var displayArtworkData: Data? = nil
     var durationSec: Double
     var positionSec: Double
     var isPlaying: Bool
@@ -31,6 +32,7 @@ enum AppleMusicStateMapper {
             artist: snapshot.artist ?? "",
             album: snapshot.album,
             artworkData: snapshot.artworkData,
+            displayArtworkData: snapshot.displayArtworkData,
             durationMs: durationMs,
             positionMs: positionMs,
             isPlaying: snapshot.isPlaying,
@@ -59,6 +61,7 @@ final class AppleMusicSource {
     private var started = false
     private var artworkCacheKey: String?
     private var artworkCacheData: Data?
+    private var displayArtworkCacheData: Data?
 
     func start() {
         guard !started else { return }
@@ -96,6 +99,7 @@ final class AppleMusicSource {
         lastSnapshot = nil
         artworkCacheKey = nil
         artworkCacheData = nil
+        displayArtworkCacheData = nil
         player.endGeneratingPlaybackNotifications()
     }
 
@@ -175,12 +179,14 @@ final class AppleMusicSource {
             if artworkKey != artworkCacheKey {
                 artworkCacheKey = artworkKey
                 artworkCacheData = Self.compactArtworkData(item.artwork)
+                displayArtworkCacheData = Self.displayArtworkData(item.artwork)
             }
             return AppleMusicSnapshot(
                 title: item.title,
                 artist: item.artist,
                 album: item.albumTitle,
                 artworkData: artworkCacheData,
+                displayArtworkData: displayArtworkCacheData,
                 durationSec: item.playbackDuration,
                 positionSec: player.currentPlaybackTime,
                 isPlaying: player.playbackState == .playing
@@ -217,6 +223,20 @@ final class AppleMusicSource {
             }
         }
         return nil
+    }
+
+    /// The main app can afford a useful image for the full-screen blurred
+    /// backdrop and iPad artwork pane; never place this data in ActivityKit.
+    private static func displayArtworkData(_ artwork: MPMediaItemArtwork?) -> Data? {
+        guard let source = artwork?.image(at: CGSize(width: 640, height: 640)) else { return nil }
+        let size = CGSize(width: 640, height: 640)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            source.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return image.jpegData(compressionQuality: 0.82)
     }
 }
 #endif
