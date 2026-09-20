@@ -26,11 +26,23 @@ struct LyricsScreen: View {
         }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showsDisplayControls) {
-            LyricsDisplayControls()
-                .environmentObject(model)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+            displayControlsSheet
         }
+    }
+
+    @ViewBuilder
+    private var displayControlsSheet: some View {
+#if os(iOS)
+        LyricsDisplayControls()
+            .environmentObject(model)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+#else
+        // The macOS branch exists only for the SwiftPM test harness.
+        LyricsDisplayControls()
+            .environmentObject(model)
+            .frame(minWidth: 480, minHeight: 520)
+#endif
     }
 
     private func usesTwoColumnLayout(in size: CGSize) -> Bool {

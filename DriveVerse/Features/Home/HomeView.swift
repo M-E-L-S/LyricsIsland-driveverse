@@ -33,10 +33,21 @@ struct HomeView: View {
             }
         }
         .task { model.start() }
+#if os(iOS)
         .fullScreenCover(isPresented: $showsLyrics) {
             LyricsScreen()
                 .environmentObject(model)
         }
+#else
+        // SwiftPM compiles the shared source target for macOS in CI, where
+        // fullScreenCover is explicitly unavailable. The shipping app takes
+        // the iOS branch above; this sheet only keeps the core test harness
+        // buildable.
+        .sheet(isPresented: $showsLyrics) {
+            LyricsScreen()
+                .environmentObject(model)
+        }
+#endif
     }
 }
 
