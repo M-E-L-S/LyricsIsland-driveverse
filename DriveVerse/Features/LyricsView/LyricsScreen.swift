@@ -15,7 +15,7 @@ struct LyricsScreen: View {
         GeometryReader { geometry in
             ZStack {
                 LyricsBackdrop(artworkData: model.nowPlaying?.displayArtworkData
-                    ?? model.nowPlaying?.artworkData)
+                    ?? model.nowPlaying?.artworkData, size: geometry.size)
 
                 if usesTwoColumnLayout(in: geometry.size) {
                     wideLayout(size: geometry.size)
@@ -23,6 +23,8 @@ struct LyricsScreen: View {
                     compactLayout(size: geometry.size)
                 }
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
         }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showsDisplayControls) {
@@ -515,6 +517,7 @@ private struct AlbumPlayerPane: View {
 
 private struct LyricsBackdrop: View {
     let artworkData: Data?
+    let size: CGSize
 
     var body: some View {
         ZStack {
@@ -528,6 +531,7 @@ private struct LyricsBackdrop: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
+                    .frame(width: size.width, height: size.height)
                     .saturation(1.55)
                     .contrast(1.12)
                     .blur(radius: 58)
@@ -552,6 +556,8 @@ private struct LyricsBackdrop: View {
                 endPoint: .bottom
             )
         }
+        .frame(width: size.width, height: size.height)
+        .clipped()
         .ignoresSafeArea()
         .allowsHitTesting(false)
     }
