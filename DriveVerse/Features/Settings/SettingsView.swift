@@ -55,6 +55,18 @@ struct SettingsView: View {
             }
 
             Section {
+                Toggle(
+                    "Word-by-word Live Activity",
+                    isOn: $model.liveActivityWordUpdatesEnabled
+                )
+                .disabled(!model.lyricsEnabled)
+            } header: {
+                Text("Live Activity")
+            } footer: {
+                Text("When enabled, DriveVerse sends aggressive word-level updates for the Lock Screen and CarPlay. Turn it off to update every Live Activity only when the lyric line changes.")
+            }
+
+            Section {
                 if let source = model.currentLyricsSource, model.lyricsEnabled {
                     LabeledContent("Current lyrics source", value: String(localized: source.title))
                 }

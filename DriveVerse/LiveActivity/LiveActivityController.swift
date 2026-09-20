@@ -20,18 +20,19 @@ final class LiveActivityController {
     /// Rapid line/word changes are coalesced (never dropped) to one update per
     /// this interval; the newest lyric state always lands, at worst this late.
     /// Track changes and play/pause flips always send immediately.
-    static let minLineUpdateInterval: TimeInterval = 0.45
+    static let minUpdateInterval: TimeInterval = 0.20
 
     private static let log = Logger(subsystem: "io.github.mels.driveverse", category: "activity")
 
     private var activity: Activity<LyricsAttributes>?
     private var policy = LiveActivityUpdatePolicy()
-    private var throttle = LiveActivityUpdateThrottle(minInterval: LiveActivityController.minLineUpdateInterval)
+    private var throttle = LiveActivityUpdateThrottle(minInterval: LiveActivityController.minUpdateInterval)
     private var endTask: Task<Void, Never>?
     private var stateWatcher: Task<Void, Never>?
     private var pendingTask: Task<Void, Never>?
     private var pendingContent: LyricsAttributes.ContentState?
     private var lastSentTrackKey: String?
+    private var lastSentLineIndex: Int?
     private var lastSentIsPlaying: Bool?
     private var lastSentPositionMs: Int?
     private var lastSentAt: Date?
@@ -41,15 +42,26 @@ final class LiveActivityController {
     /// period, because a fresh start would need the foreground.
     var holdWhilePaused = false
 
+    /// When disabled, both update deduplication and rendered content ignore
+    /// the current word. All Live Activity families then update per line.
+    var wordUpdatesEnabled = true {
+        didSet {
+            guard wordUpdatesEnabled != oldValue else { return }
+            forceNextUpdate()
+        }
+    }
+
     /// Display preferences can change without a track or line change.
     /// Reset deduplication so the newly rendered text reaches ActivityKit.
     func forceNextUpdate() {
         policy.reset()
         lastSentTrackKey = nil
+        lastSentLineIndex = nil
         lastSentIsPlaying = nil
         lastSentPositionMs = nil
         lastSentAt = nil
         cancelPendingUpdate()
+        throttle = LiveActivityUpdateThrottle(minInterval: Self.minUpdateInterval)
     }
 
     init() {
@@ -87,8 +99,11 @@ final class LiveActivityController {
 
         let key = Self.key(for: state)
         let now = Date()
+        let lineChanged = key == lastSentTrackKey
+            && position?.lineIndex != lastSentLineIndex
         let seekedWithinLine: Bool
-        if let sentPosition = lastSentPositionMs, let sentAt = lastSentAt,
+        if wordUpdatesEnabled,
+           let sentPosition = lastSentPositionMs, let sentAt = lastSentAt,
            key == lastSentTrackKey, state.isPlaying == lastSentIsPlaying,
            let position {
             let elapsed = state.isPlaying ? Int(now.timeIntervalSince(sentAt) * 1_000) : 0
@@ -100,19 +115,25 @@ final class LiveActivityController {
         let policyWantsUpdate = policy.shouldUpdate(
             trackKey: key,
             lineIndex: position?.lineIndex,
-            wordIndex: position?.currentWordIndex,
+            wordIndex: wordUpdatesEnabled ? position?.currentWordIndex : nil,
             isPlaying: state.isPlaying
         )
         guard seekedWithinLine || policyWantsUpdate else { return }
 
         let critical = key != lastSentTrackKey
             || state.isPlaying != lastSentIsPlaying
+            || lineChanged
             || seekedWithinLine
         lastSentTrackKey = key
+        lastSentLineIndex = position?.lineIndex
         lastSentIsPlaying = state.isPlaying
         lastSentPositionMs = position?.positionMs ?? state.positionMs
         lastSentAt = now
-        let content = Self.content(state: state, position: position)
+        let content = Self.content(
+            state: state,
+            position: position,
+            wordUpdatesEnabled: wordUpdatesEnabled
+        )
 
         switch throttle.decide(critical: critical, now: now) {
         case .sendNow:
@@ -153,7 +174,13 @@ final class LiveActivityController {
     /// content matters because a background app can only *update* from then on.
     func beginSession(state: NowPlayingState?, position: LyricsPosition?) {
         guard activity == nil, ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        let content = state.map { Self.content(state: $0, position: position) }
+        let content = state.map {
+            Self.content(
+                state: $0,
+                position: position,
+                wordUpdatesEnabled: wordUpdatesEnabled
+            )
+        }
             ?? LyricsAttributes.ContentState(
                 title: "DriveVerse", artist: "",
                 artworkData: nil,
@@ -172,17 +199,19 @@ final class LiveActivityController {
             throttle.noteSent(now: Date())
             if let state {
                 lastSentTrackKey = Self.key(for: state)
+                lastSentLineIndex = position?.lineIndex
                 lastSentIsPlaying = state.isPlaying
                 lastSentPositionMs = position?.positionMs ?? state.positionMs
                 lastSentAt = Date()
                 policy.seed(
                     trackKey: Self.key(for: state),
                     lineIndex: position?.lineIndex,
-                    wordIndex: position?.currentWordIndex,
+                    wordIndex: wordUpdatesEnabled ? position?.currentWordIndex : nil,
                     isPlaying: state.isPlaying
                 )
             } else {
                 lastSentTrackKey = nil
+                lastSentLineIndex = nil
                 lastSentIsPlaying = nil
                 lastSentPositionMs = nil
                 lastSentAt = nil
@@ -205,6 +234,8 @@ final class LiveActivityController {
                 if self.activity?.id == requested.id {
                     self.activity = nil
                     self.policy.reset()
+                    self.lastSentTrackKey = nil
+                    self.lastSentLineIndex = nil
                     self.lastSentPositionMs = nil
                     self.lastSentAt = nil
                     self.cancelPendingUpdate()
@@ -223,6 +254,8 @@ final class LiveActivityController {
         guard let activity else { return }
         self.activity = nil
         policy.reset()
+        lastSentTrackKey = nil
+        lastSentLineIndex = nil
         lastSentPositionMs = nil
         lastSentAt = nil
         await activity.end(nil, dismissalPolicy: .immediate)
@@ -248,9 +281,17 @@ final class LiveActivityController {
         "\(state.title)|\(state.artist)|\(state.album ?? "")|art:\(state.artworkData?.hashValue ?? 0)"
     }
 
-    private static func content(state: NowPlayingState, position: LyricsPosition?) -> LyricsAttributes.ContentState {
+    private static func content(
+        state: NowPlayingState,
+        position: LyricsPosition?,
+        wordUpdatesEnabled: Bool
+    ) -> LyricsAttributes.ContentState {
         let line = String((position?.currentLine ?? "♪ \(state.title)").prefix(100))
-        let segments = wordSegments(position: position, fallback: line)
+        let segments = wordSegments(
+            position: position,
+            fallback: line,
+            enabled: wordUpdatesEnabled
+        )
         return LyricsAttributes.ContentState(
             title: String(state.title.prefix(48)),
             artist: String(state.artist.prefix(48)),
@@ -266,8 +307,10 @@ final class LiveActivityController {
 
     private static func wordSegments(
         position: LyricsPosition?,
-        fallback: String
+        fallback: String,
+        enabled: Bool
     ) -> (completed: String, active: String, remaining: String) {
+        guard enabled else { return (fallback, "", "") }
         guard let words = position?.currentWords, !words.isEmpty,
               let index = position?.currentWordIndex, words.indices.contains(index) else {
             return ("", fallback, "")

@@ -29,14 +29,16 @@ struct LyricsLiveActivity: Widget {
                         VStack(alignment: .leading, spacing: 5) {
                             LiveLineText(state: context.state)
                                 .font(.title3.bold())
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.72)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .layoutPriority(1)
                             Text(context.state.secondaryLine.isEmpty
                                  ? context.state.nextLine
                                  : context.state.secondaryLine)
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -50,12 +52,8 @@ struct LyricsLiveActivity: Widget {
             } compactLeading: {
                 ActivityArtwork(data: context.state.artworkData, size: 22)
             } compactTrailing: {
-                LiveLineText(state: context.state)
-                    .font(.caption.bold())
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .frame(width: 88, height: 22, alignment: .leading)
-                    .clipped()
+                CompactMarqueeLine(text: context.state.fullLine)
+                    .id(context.state.fullLine)
             } minimal: {
                 ActivityArtwork(data: context.state.artworkData, size: 22)
             }
@@ -188,6 +186,59 @@ private struct LiveLineText: View {
 
     var body: some View {
         Text(state.completedText + state.activeText + state.remainingText)
+    }
+}
+
+/// Compact Dynamic Island gets only a narrow fixed region. Scroll a stable
+/// full-line string locally so word-level ContentState updates do not restart
+/// the animation. This is deliberately independent of ActivityKit cadence.
+private struct CompactMarqueeLine: View {
+    let text: String
+
+    @State private var showingEnd = false
+
+    private let viewportWidth: CGFloat = 88
+    private let pointsPerSecond: CGFloat = 14
+
+    private var estimatedTextWidth: CGFloat {
+#if canImport(UIKit)
+        let base = UIFont.preferredFont(forTextStyle: .caption1)
+        let descriptor = base.fontDescriptor.withSymbolicTraits(.traitBold)
+            ?? base.fontDescriptor
+        let font = UIFont(descriptor: descriptor, size: base.pointSize)
+        return ceil((text as NSString).size(withAttributes: [.font: font]).width)
+#else
+        return CGFloat(max(text.count, 1)) * 9.5
+#endif
+    }
+
+    private var travel: CGFloat {
+        max(0, estimatedTextWidth - viewportWidth)
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.caption.bold())
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .offset(x: showingEnd ? -travel : 0)
+            .frame(width: viewportWidth, height: 22, alignment: .leading)
+            .clipped()
+            .onAppear {
+                guard travel > 0 else { return }
+                withAnimation(
+                    .linear(duration: max(2.5, Double(travel / pointsPerSecond)))
+                    .repeatForever(autoreverses: true)
+                ) {
+                    showingEnd = true
+                }
+            }
+    }
+}
+
+private extension LyricsAttributes.ContentState {
+    var fullLine: String {
+        completedText + activeText + remainingText
     }
 }
 

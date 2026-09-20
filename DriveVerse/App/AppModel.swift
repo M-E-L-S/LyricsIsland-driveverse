@@ -28,6 +28,7 @@ final class AppModel: ObservableObject {
     private static let chineseConversionKey = "lyricsChineseConversion"
     private static let timingOffsetKey = "lyricsTimingOffsetMs"
     private static let lyricsEnabledKey = "lyricsEnabled"
+    private static let liveActivityWordUpdatesKey = "liveActivityWordUpdatesEnabled"
 
     // MARK: UI state
 
@@ -53,6 +54,15 @@ final class AppModel: ObservableObject {
             } else {
                 disableLyrics()
             }
+        }
+    }
+    @Published var liveActivityWordUpdatesEnabled: Bool {
+        didSet {
+            defaults.set(liveActivityWordUpdatesEnabled, forKey: Self.liveActivityWordUpdatesKey)
+#if os(iOS)
+            liveActivity.wordUpdatesEnabled = liveActivityWordUpdatesEnabled
+            syncLiveActivity()
+#endif
         }
     }
     @Published var lyricsDisplayMode: LyricsDisplayMode {
@@ -123,6 +133,9 @@ final class AppModel: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         lyricsEnabled = defaults.object(forKey: Self.lyricsEnabledKey) as? Bool ?? true
+        liveActivityWordUpdatesEnabled = defaults.object(
+            forKey: Self.liveActivityWordUpdatesKey
+        ) as? Bool ?? true
         lyricsDisplayMode = defaults.string(forKey: Self.displayModeKey)
             .flatMap(LyricsDisplayMode.init(rawValue:)) ?? .originalAndTranslation
         chineseConversion = defaults.string(forKey: Self.chineseConversionKey)
@@ -143,6 +156,7 @@ final class AppModel: ObservableObject {
         wire(nowPlayingPublisher: applePublisher)
 
 #if os(iOS)
+        liveActivity.wordUpdatesEnabled = liveActivityWordUpdatesEnabled
         backgroundKeeper.onIssue = { [weak self] message in
             Task { @MainActor in
                 self?.errorMessage = message
@@ -331,8 +345,9 @@ final class AppModel: ObservableObject {
         syncEngine.setDisplayOptions(lyricsDisplayOptions)
     }
 
-    /// The controller's update policy dedupes the 500 ms ticks — only active
-    /// word/line changes and play/pause flips reach ActivityKit.
+    /// The controller's update policy dedupes the 250 ms ticks — depending on
+    /// the user's setting, only active word/line changes or line changes reach
+    /// ActivityKit. Track and playback-state changes are always immediate.
     private func syncLiveActivity() {
 #if os(iOS)
         guard lyricsEnabled else {
