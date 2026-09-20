@@ -15,7 +15,9 @@ struct WordTimedText: View {
     var pendingColor: Color = .secondary.opacity(0.45)
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !playback.isPlaying)) { timeline in
+        // Let SwiftUI follow the display's native animation cadence (including
+        // ProMotion) instead of imposing a second, lower-frequency clock.
+        TimelineView(.animation(paused: !playback.isPlaying)) { timeline in
             if let words = line.words, !words.isEmpty {
                 let position = SyncEngine.extrapolatedPositionMs(
                     anchor: playback,
@@ -39,6 +41,8 @@ struct WordTimedText: View {
                                 activeIndex: activeIndex,
                                 states: states
                             ),
+                            isLastWord: index == words.count - 1,
+                            durationMs: max(0, word.endTimeMs - word.startTimeMs),
                             completedColor: completedColor,
                             activeColor: activeColor,
                             pendingColor: pendingColor
@@ -96,6 +100,8 @@ private struct ProgressiveWordFill: View {
     let fraction: Double
     let isActive: Bool
     let previewIntensity: Double
+    let isLastWord: Bool
+    let durationMs: Int
     let completedColor: Color
     let activeColor: Color
     let pendingColor: Color
@@ -122,38 +128,67 @@ private struct ProgressiveWordFill: View {
                         )
                     }
             }
+
+            if isLongTail, isActive {
+                Text(text)
+                    .foregroundStyle(Color.white.opacity(tailInnerLight))
+                    .mask { fillMask }
+            }
         }
         // Apple Music's completed words lift only subtly. Driving this from
         // the same fraction keeps the movement continuous within every glyph.
-        .offset(y: -1.35 * easedLift)
+        .offset(y: -(1.35 * easedLift + tailLift))
     }
 
     @ViewBuilder
     private var fillMask: some View {
-        if fraction >= 0.999 {
-            Color.white
-        } else {
-            let edge = min(1, max(0, fraction))
-            let nearFade = min(1, edge + 0.07)
-            let middleFade = min(1, edge + 0.17)
-            let farFade = min(1, edge + 0.31)
-            LinearGradient(
-                stops: [
-                    .init(color: .white, location: 0),
-                    .init(color: .white, location: edge),
-                    .init(color: .white.opacity(0.76), location: nearFade),
-                    .init(color: .white.opacity(0.28), location: middleFade),
-                    .init(color: .clear, location: farFade),
-                    .init(color: .clear, location: 1)
-                ],
-                startPoint: layoutDirection == .rightToLeft ? .trailing : .leading,
-                endPoint: layoutDirection == .rightToLeft ? .leading : .trailing
-            )
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let edge = width * fraction
+            let feather = min(18, max(8, width * 0.34))
+            ZStack(alignment: layoutDirection == .rightToLeft ? .trailing : .leading) {
+                Rectangle()
+                    .frame(width: edge)
+                LinearGradient(
+                    stops: [
+                        .init(color: .white, location: 0),
+                        .init(color: .white.opacity(0.72), location: 0.28),
+                        .init(color: .white.opacity(0.25), location: 0.66),
+                        .init(color: .clear, location: 1)
+                    ],
+                    startPoint: layoutDirection == .rightToLeft ? .trailing : .leading,
+                    endPoint: layoutDirection == .rightToLeft ? .leading : .trailing
+                )
+                .frame(width: feather)
+                .offset(x: layoutDirection == .rightToLeft
+                    ? -(edge - feather * 0.12)
+                    : edge - feather * 0.12)
+            }
+            .frame(width: width, height: geometry.size.height,
+                   alignment: layoutDirection == .rightToLeft ? .trailing : .leading)
+            .clipped()
         }
     }
 
     private var easedLift: Double {
-        fraction * fraction * (3 - 2 * fraction)
+        1 - pow(1 - fraction, 3)
+    }
+
+    private var isLongTail: Bool {
+        isLastWord && durationMs >= 850
+    }
+
+    private var tailProgress: Double {
+        guard isLongTail else { return 0 }
+        return min(1, max(0, (fraction - 0.18) / 0.82))
+    }
+
+    private var tailLift: Double {
+        5.4 * (1 - pow(1 - tailProgress, 3))
+    }
+
+    private var tailInnerLight: Double {
+        0.10 + sin(tailProgress * .pi) * 0.24
     }
 }
 

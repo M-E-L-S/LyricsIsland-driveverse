@@ -113,6 +113,7 @@ struct LyricsScreen: View {
                     lines: document.lines,
                     currentIndex: model.position?.lineIndex,
                     playback: model.playbackAnchor ?? model.nowPlaying,
+                    lyricPositionMs: model.position?.lyricPositionMs,
                     timingOffsetMs: model.lyricsTimingOffsetMs,
                     options: model.lyricsDisplayOptions,
                     fontScale: model.lyricsFontScale,
@@ -273,6 +274,7 @@ struct SyncedLyricsView: View {
     let lines: [LyricsLine]
     let currentIndex: Int?
     let playback: NowPlayingState?
+    let lyricPositionMs: Int?
     let timingOffsetMs: Int
     let options: LyricsDisplayOptions
     let fontScale: Double
@@ -289,19 +291,32 @@ struct SyncedLyricsView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: lineSpacing) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                        Button {
-                            followsPlayback = true
-                            resumeFollowingTask?.cancel()
-                            onSeek(line.startTimeMs)
-                            withAnimation(.snappy(duration: 0.35)) {
-                                proxy.scrollTo(index, anchor: lyricFocusAnchor)
+                        Group {
+                            Button {
+                                followsPlayback = true
+                                resumeFollowingTask?.cancel()
+                                onSeek(line.startTimeMs)
+                                withAnimation(.snappy(duration: 0.35)) {
+                                    proxy.scrollTo(index, anchor: lyricFocusAnchor)
+                                }
+                            } label: {
+                                lyricLine(line, at: index)
                             }
-                        } label: {
-                            lyricLine(line, at: index)
+                            .buttonStyle(.plain)
+                            .id(index)
+                            .accessibilityValue(index == currentIndex ? Text("Current lyric") : Text(""))
+
+                            if let gap = breathingGap(after: index) {
+                                BreathingDots(
+                                    startTimeMs: gap.startTimeMs,
+                                    endTimeMs: gap.endTimeMs,
+                                    reportedPositionMs: lyricPositionMs,
+                                    playback: playback,
+                                    timingOffsetMs: timingOffsetMs
+                                )
+                                .id(BreathingRowID(lineIndex: index))
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .id(index)
-                        .accessibilityValue(index == currentIndex ? Text("Current lyric") : Text(""))
                     }
                 }
                 .padding(.horizontal, 32)
@@ -331,8 +346,14 @@ struct SyncedLyricsView: View {
             }
             .onChange(of: currentIndex) { _, newIndex in
                 guard followsPlayback, let newIndex else { return }
-                withAnimation(.smooth(duration: 0.62)) {
+                withAnimation(.timingCurve(0.18, 0.82, 0.20, 1, duration: 0.72)) {
                     proxy.scrollTo(newIndex, anchor: lyricFocusAnchor)
+                }
+            }
+            .onChange(of: activeBreatherIndex) { _, lineIndex in
+                guard followsPlayback, let lineIndex else { return }
+                withAnimation(.timingCurve(0.18, 0.82, 0.20, 1, duration: 0.58)) {
+                    proxy.scrollTo(BreathingRowID(lineIndex: lineIndex), anchor: lyricFocusAnchor)
                 }
             }
             .onScrollPhaseChange { _, phase in
@@ -373,7 +394,7 @@ struct SyncedLyricsView: View {
     }
 
     private func lyricLine(_ line: LyricsLine, at index: Int) -> some View {
-        let isCurrent = index == currentIndex
+        let isCurrent = index == currentIndex && activeBreatherIndex == nil
         return VStack(alignment: .leading, spacing: 7) {
             Group {
                 if isCurrent, line.words?.isEmpty == false, let playback {
@@ -406,6 +427,7 @@ struct SyncedLyricsView: View {
         .opacity(opacity(for: index))
         .blur(radius: blurRadius(for: index))
         .scaleEffect(isCurrent ? 1 : 0.985, anchor: .leading)
+        .animation(.easeOut(duration: 0.28), value: currentIndex)
         .modifier(SequentialLyricCatchUp(
             lineIndex: index,
             currentIndex: currentIndex,
@@ -413,23 +435,51 @@ struct SyncedLyricsView: View {
         ))
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .animation(.easeOut(duration: 0.28), value: currentIndex)
     }
 
     private func opacity(for index: Int) -> Double {
         guard let currentIndex else { return 0.40 }
-        if index == currentIndex { return 1 }
+        if index == currentIndex { return activeBreatherIndex == index ? 0.22 : 1 }
         if !followsPlayback { return 0.34 }
         return abs(index - currentIndex) == 1 ? 0.25 : 0.14
     }
 
     private func blurRadius(for index: Int) -> CGFloat {
-        guard followsPlayback, let currentIndex, index != currentIndex else { return 0 }
+        guard followsPlayback, let currentIndex else { return 0 }
+        if index == currentIndex { return activeBreatherIndex == index ? 1.2 : 0 }
         return abs(index - currentIndex) == 1 ? 1.2 : 2.4
     }
 
     private var lyricFocusAnchor: UnitPoint {
         UnitPoint(x: 0.5, y: 0.24)
+    }
+
+    private var activeBreatherIndex: Int? {
+        guard let lyricPositionMs else { return nil }
+        return lines.indices.first { index in
+            guard let gap = breathingGap(after: index) else { return false }
+            return lyricPositionMs >= gap.startTimeMs && lyricPositionMs < gap.endTimeMs
+        }
+    }
+
+    private func breathingGap(after index: Int) -> BreathingGap? {
+        guard index + 1 < lines.count else { return nil }
+        let line = lines[index]
+        let nextStart = lines[index + 1].startTimeMs
+        let start: Int
+
+        if line.original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            start = line.startTimeMs
+        } else if let lastWordEnd = line.words?.last?.endTimeMs {
+            start = lastWordEnd
+        } else {
+            let interval = nextStart - line.startTimeMs
+            guard interval >= 6_000 else { return nil }
+            start = line.startTimeMs + min(4_500, max(2_800, Int(Double(interval) * 0.56)))
+        }
+
+        guard nextStart - start >= 1_400 else { return nil }
+        return BreathingGap(startTimeMs: start, endTimeMs: nextStart)
     }
 
     private func scheduleResume(using proxy: ScrollViewProxy) {
@@ -468,14 +518,14 @@ private struct SequentialLyricCatchUp: ViewModifier {
 
                 let direction: CGFloat = newIndex > oldIndex ? 1 : -1
                 let distance = min(7, abs(lineIndex - newIndex))
-                lagOffset = direction * (9 + CGFloat(distance) * 0.7)
+                lagOffset = direction * (15 + CGFloat(distance) * 1.4)
 
                 // Commit the lag first, then let nearby rows catch the new
                 // scroll position before progressively more distant rows.
                 DispatchQueue.main.async {
                     withAnimation(
-                        .spring(duration: 0.48, bounce: 0.06)
-                            .delay(Double(distance) * 0.028)
+                        .timingCurve(0.18, 0.82, 0.20, 1, duration: 0.58)
+                            .delay(Double(distance) * 0.045)
                     ) {
                         lagOffset = 0
                     }
@@ -484,6 +534,86 @@ private struct SequentialLyricCatchUp: ViewModifier {
             .onChange(of: enabled) { _, isEnabled in
                 if !isEnabled { lagOffset = 0 }
             }
+    }
+}
+
+private struct BreathingGap {
+    let startTimeMs: Int
+    let endTimeMs: Int
+}
+
+private struct BreathingRowID: Hashable {
+    let lineIndex: Int
+}
+
+private struct BreathingDots: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let startTimeMs: Int
+    let endTimeMs: Int
+    let reportedPositionMs: Int?
+    let playback: NowPlayingState?
+    let timingOffsetMs: Int
+
+    var body: some View {
+        TimelineView(.animation(
+            paused: reduceMotion || !isActive || playback?.isPlaying != true
+        )) { timeline in
+            let position = playback.map {
+                SyncEngine.extrapolatedPositionMs(anchor: $0, at: timeline.date) - timingOffsetMs
+            } ?? reportedPositionMs ?? startTimeMs
+            let state = visualState(at: position)
+
+            HStack(spacing: 7) {
+                ForEach(0..<3, id: \.self) { _ in
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 6, height: 6)
+                }
+            }
+            .scaleEffect(state.scale)
+            .offset(y: state.offsetY)
+            .opacity(state.opacity)
+            .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var isActive: Bool {
+        guard let reportedPositionMs else { return false }
+        return reportedPositionMs >= startTimeMs && reportedPositionMs < endTimeMs
+    }
+
+    private func visualState(at position: Int) -> (opacity: Double, offsetY: CGFloat, scale: CGFloat) {
+        let duration = max(1, endTimeMs - startTimeMs)
+        let progress = min(1, max(0, Double(position - startTimeMs) / Double(duration)))
+
+        if position < startTimeMs || position >= endTimeMs {
+            return (0, 12, 0.86)
+        }
+        if reduceMotion {
+            return (0.88, -2, 1)
+        }
+        if progress < 0.22 {
+            let entrance = easeOutCubic(progress / 0.22)
+            return (entrance, 8 - CGFloat(entrance) * 12, 0.84 + CGFloat(entrance) * 0.16)
+        }
+        if progress > 0.72 {
+            let exit = min(1, max(0, (progress - 0.72) / 0.28))
+            let drop = exit * exit * exit
+            return (1 - smoothStep(exit), -4 + CGFloat(drop) * 19, 1 - CGFloat(exit) * 0.12)
+        }
+
+        let breath = sin((progress - 0.22) / 0.50 * .pi * 2)
+        return (0.84 + breath * 0.10, -4 - CGFloat(breath) * 0.8, 0.97 + CGFloat(breath) * 0.03)
+    }
+
+    private func easeOutCubic(_ value: Double) -> Double {
+        1 - pow(1 - value, 3)
+    }
+
+    private func smoothStep(_ value: Double) -> Double {
+        value * value * (3 - 2 * value)
     }
 }
 
