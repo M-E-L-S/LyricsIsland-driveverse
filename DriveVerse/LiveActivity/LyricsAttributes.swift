@@ -22,6 +22,11 @@ struct LyricsAttributes: ActivityAttributes {
         var completedText: String
         var activeText: String
         var remainingText: String
+        /// Compact-island marquee metadata. The line index restarts a
+        /// one-shot animation even when two adjacent lyric lines are equal;
+        /// word timing selects short, state-driven animation segments.
+        var lineIndex: Int?
+        var usesWordTiming: Bool
         var isPlaying: Bool
 
         private enum CodingKeys: String, CodingKey {
@@ -33,6 +38,8 @@ struct LyricsAttributes: ActivityAttributes {
             case completedText = "d"
             case activeText = "v"
             case remainingText = "m"
+            case lineIndex = "l"
+            case usesWordTiming = "w"
             case isPlaying = "x"
         }
     }

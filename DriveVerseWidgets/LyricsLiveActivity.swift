@@ -52,8 +52,8 @@ struct LyricsLiveActivity: Widget {
             } compactLeading: {
                 ActivityArtwork(data: context.state.artworkData, size: 22)
             } compactTrailing: {
-                CompactMarqueeLine(text: context.state.fullLine)
-                    .id(context.state.fullLine)
+                CompactMarqueeLine(state: context.state)
+                    .id(context.state.marqueeIdentity)
             } minimal: {
                 ActivityArtwork(data: context.state.artworkData, size: 22)
             }
@@ -189,31 +189,49 @@ private struct LiveLineText: View {
     }
 }
 
-/// Compact Dynamic Island gets only a narrow fixed region. Scroll a stable
-/// full-line string locally so word-level ContentState updates do not restart
-/// the animation. This is deliberately independent of ActivityKit cadence.
+/// Compact Dynamic Island gets only a narrow fixed region. Word-timed lyrics
+/// advance through short animations driven by each ContentState update. A
+/// line-only lyric performs one sub-two-second pass and stops at the tail.
 private struct CompactMarqueeLine: View {
-    let text: String
+    let state: LyricsAttributes.ContentState
 
     @State private var showingEnd = false
 
     private let viewportWidth: CGFloat = 88
-    private let pointsPerSecond: CGFloat = 14
+    private let wordStepDuration = 0.22
+    private let linePassDuration = 1.8
 
-    private var estimatedTextWidth: CGFloat {
+    private var text: String { state.fullLine }
+
+    private func measuredWidth(_ value: String) -> CGFloat {
 #if canImport(UIKit)
         let base = UIFont.preferredFont(forTextStyle: .caption1)
         let descriptor = base.fontDescriptor.withSymbolicTraits(.traitBold)
             ?? base.fontDescriptor
         let font = UIFont(descriptor: descriptor, size: base.pointSize)
-        return ceil((text as NSString).size(withAttributes: [.font: font]).width)
+        return ceil((value as NSString).size(withAttributes: [.font: font]).width)
 #else
-        return CGFloat(max(text.count, 1)) * 9.5
+        return CGFloat(max(value.count, 1)) * 9.5
 #endif
     }
 
     private var travel: CGFloat {
-        max(0, estimatedTextWidth - viewportWidth)
+        max(0, measuredWidth(text) - viewportWidth)
+    }
+
+    /// Keep the active word around 55% of the compact viewport. Clamping
+    /// leaves the line anchored at its start and guarantees the final word
+    /// exposes the tail instead of scrolling into empty space.
+    private var wordOffset: CGFloat {
+        let activeCenter = measuredWidth(state.completedText)
+            + measuredWidth(state.activeText) / 2
+        let requestedTravel = max(0, activeCenter - viewportWidth * 0.55)
+        return -min(travel, requestedTravel)
+    }
+
+    private var targetOffset: CGFloat {
+        if state.usesWordTiming { return wordOffset }
+        return showingEnd ? -travel : 0
     }
 
     var body: some View {
@@ -221,15 +239,16 @@ private struct CompactMarqueeLine: View {
             .font(.caption.bold())
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
-            .offset(x: showingEnd ? -travel : 0)
+            .offset(x: targetOffset)
             .frame(width: viewportWidth, height: 22, alignment: .leading)
             .clipped()
+            .animation(
+                state.usesWordTiming ? .linear(duration: wordStepDuration) : nil,
+                value: state.completedText
+            )
             .onAppear {
-                guard travel > 0 else { return }
-                withAnimation(
-                    .linear(duration: max(2.5, Double(travel / pointsPerSecond)))
-                    .repeatForever(autoreverses: true)
-                ) {
+                guard !state.usesWordTiming, travel > 0 else { return }
+                withAnimation(.linear(duration: linePassDuration)) {
                     showingEnd = true
                 }
             }
@@ -239,6 +258,10 @@ private struct CompactMarqueeLine: View {
 private extension LyricsAttributes.ContentState {
     var fullLine: String {
         completedText + activeText + remainingText
+    }
+
+    var marqueeIdentity: String {
+        "\(title)|\(lineIndex ?? -1)|\(usesWordTiming)|\(fullLine)"
     }
 }
 

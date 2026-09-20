@@ -187,6 +187,7 @@ final class LiveActivityController {
                 secondaryLine: "", nextLine: "",
                 completedText: "", activeText: String(localized: "♪ Waiting for music…"),
                 remainingText: "",
+                lineIndex: nil, usesWordTiming: false,
                 isPlaying: false
             )
         do {
@@ -301,6 +302,8 @@ final class LiveActivityController {
             completedText: segments.completed,
             activeText: segments.active,
             remainingText: segments.remaining,
+            lineIndex: position?.lineIndex,
+            usesWordTiming: segments.usesWordTiming,
             isPlaying: state.isPlaying
         )
     }
@@ -309,19 +312,19 @@ final class LiveActivityController {
         position: LyricsPosition?,
         fallback: String,
         enabled: Bool
-    ) -> (completed: String, active: String, remaining: String) {
-        guard enabled else { return (fallback, "", "") }
+    ) -> (completed: String, active: String, remaining: String, usesWordTiming: Bool) {
+        guard enabled else { return (fallback, "", "", false) }
         guard let words = position?.currentWords, !words.isEmpty,
               let index = position?.currentWordIndex, words.indices.contains(index) else {
-            return ("", fallback, "")
+            return ("", fallback, "", false)
         }
         guard words.reduce(0, { $0 + $1.original.count }) <= 100 else {
-            return ("", fallback, "")
+            return ("", fallback, "", false)
         }
         let completed = words[..<index].map(\.original).joined()
         let active = words[index].original
         let remaining = words[(index + 1)...].map(\.original).joined()
-        return (completed, active, remaining)
+        return (completed, active, remaining, true)
     }
 }
 #endif
