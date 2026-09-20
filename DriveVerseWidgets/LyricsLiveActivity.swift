@@ -220,27 +220,22 @@ private struct CompactMarqueeLine: View {
         return overflow > 0 ? overflow + tailRevealPadding : 0
     }
 
+    private var targetOffset: CGFloat {
+        return state.lineMarqueeAtEnd ? -travel : 0
+    }
+
     var body: some View {
-        ZStack(alignment: .leading) {
-            Text(text)
-                .font(.caption.bold())
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                // The settled layout is the line tail. On insertion, an equal
-                // positive transition offset puts it back at the line start.
-                .offset(x: -travel)
-                .id(state.marqueeIdentity)
-                .transition(.asymmetric(
-                    insertion: .offset(x: travel),
-                    removal: .identity
-                ))
-        }
-        .frame(width: viewportWidth, height: 22, alignment: .leading)
-        .clipped()
-        .animation(
-            .linear(duration: linePassDuration),
-            value: state.marqueeIdentity
-        )
+        Text(text)
+            .font(.caption.bold())
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .offset(x: targetOffset)
+            .frame(width: viewportWidth, height: 22, alignment: .leading)
+            .clipped()
+            .animation(
+                .linear(duration: linePassDuration),
+                value: state.lineMarqueeAtEnd
+            )
     }
 }
 
@@ -253,6 +248,8 @@ private extension LyricsAttributes.ContentState {
         "\(title)|\(lineIndex ?? -1)|\(fullLine)"
     }
 
+    /// Excludes the compact-only marquee phase so its second state update
+    /// doesn't make the Lock Screen pulse even though no visible text changed.
     var visibleLyricsIdentity: String {
         "\(title)|\(artist)|\(fullLine)|\(secondaryLine)|\(nextLine)|\(isPlaying)"
     }

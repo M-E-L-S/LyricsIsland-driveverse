@@ -26,6 +26,9 @@ struct LyricsAttributes: ActivityAttributes {
         /// one-shot animation even when two adjacent lyric lines are equal.
         var lineIndex: Int?
         var usesWordTiming: Bool
+        /// Line-only compact marquee phase. A second Activity update advances
+        /// this because widget-local state is archived before it is rendered.
+        var lineMarqueeAtEnd: Bool
         /// Duration of the compact line animation, adapted to the remaining
         /// time before the next lyric line replaces it.
         var lineMarqueeDurationMs: Int
@@ -42,6 +45,7 @@ struct LyricsAttributes: ActivityAttributes {
             case remainingText = "m"
             case lineIndex = "l"
             case usesWordTiming = "w"
+            case lineMarqueeAtEnd = "e"
             case lineMarqueeDurationMs = "r"
             case isPlaying = "x"
         }
