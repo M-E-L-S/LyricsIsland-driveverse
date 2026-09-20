@@ -13,10 +13,7 @@ struct LyricsScreen: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ZStack {
-                LyricsBackdrop(artworkData: model.nowPlaying?.displayArtworkData
-                    ?? model.nowPlaying?.artworkData, size: geometry.size)
-
+            Group {
                 if usesTwoColumnLayout(in: geometry.size) {
                     wideLayout(size: geometry.size)
                 } else {
@@ -24,7 +21,13 @@ struct LyricsScreen: View {
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
-            .clipped()
+            .background {
+                // A background modifier never contributes its intrinsic size
+                // to foreground layout. This prevents the 640 px artwork from
+                // widening the player while still painting under safe areas.
+                LyricsBackdrop(artworkData: model.nowPlaying?.displayArtworkData
+                    ?? model.nowPlaying?.artworkData)
+            }
         }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showsDisplayControls) {
@@ -517,47 +520,48 @@ private struct AlbumPlayerPane: View {
 
 private struct LyricsBackdrop: View {
     let artworkData: Data?
-    let size: CGSize
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color(red: 0.30, green: 0.12, blue: 0.20), .black],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+        GeometryReader { geometry in
+            ZStack {
+                LinearGradient(
+                    colors: [Color(red: 0.30, green: 0.12, blue: 0.20), .black],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
 #if canImport(UIKit)
-            if let image = ArtworkImageCache.image(from: artworkData) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: size.width, height: size.height)
-                    .saturation(1.55)
-                    .contrast(1.12)
-                    .blur(radius: 58)
-                    .scaleEffect(1.34)
-                    .opacity(0.94)
-            }
+                if let image = ArtworkImageCache.image(from: artworkData) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .saturation(1.55)
+                        .contrast(1.12)
+                        .blur(radius: 58)
+                        .scaleEffect(1.34)
+                        .opacity(0.94)
+                }
 #endif
-            Color.black.opacity(0.20)
-            RadialGradient(
-                colors: [.white.opacity(0.12), .clear],
-                center: .topTrailing,
-                startRadius: 20,
-                endRadius: 520
-            )
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: .black.opacity(0.08), location: 0.48),
-                    .init(color: .black.opacity(0.66), location: 1)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+                Color.black.opacity(0.20)
+                RadialGradient(
+                    colors: [.white.opacity(0.12), .clear],
+                    center: .topTrailing,
+                    startRadius: 20,
+                    endRadius: 520
+                )
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black.opacity(0.08), location: 0.48),
+                        .init(color: .black.opacity(0.66), location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
         }
-        .frame(width: size.width, height: size.height)
-        .clipped()
         .ignoresSafeArea()
         .allowsHitTesting(false)
     }
