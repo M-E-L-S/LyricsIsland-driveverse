@@ -194,7 +194,8 @@ private struct LiveLineText: View {
 private struct CompactMarqueeLine: View {
     let state: LyricsAttributes.ContentState
 
-    private let viewportWidth: CGFloat = 88
+    private let maximumViewportWidth: CGFloat = 88
+    private let minimumViewportWidth: CGFloat = 12
     private let tailRevealPadding: CGFloat = 18
 
     private var text: String { state.fullLine }
@@ -213,6 +214,12 @@ private struct CompactMarqueeLine: View {
 #else
         return CGFloat(max(value.count, 1)) * 9.5
 #endif
+    }
+
+    /// Avoid making the system widen both sides of the compact island for a
+    /// lyric that only needs a fraction of the available trailing region.
+    private var viewportWidth: CGFloat {
+        min(maximumViewportWidth, max(minimumViewportWidth, measuredWidth(text)))
     }
 
     private var travel: CGFloat {

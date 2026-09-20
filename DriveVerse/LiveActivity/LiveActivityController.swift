@@ -3,6 +3,7 @@ import Foundation
 #if os(iOS) && canImport(ActivityKit)
 import ActivityKit
 import os
+import UIKit
 
 /// Owns the lyrics Live Activity lifecycle.
 ///
@@ -384,15 +385,16 @@ final class LiveActivityController {
         return (delay, duration)
     }
 
-    /// Device testing shows the compact trailing region holds twelve Latin
-    /// characters or six CJK characters. Treat non-ASCII graphemes as two
-    /// columns and skip the compact-only tail update at twelve columns or less.
+    /// Device testing shows the compact trailing region holds roughly twelve
+    /// Latin characters or six CJK characters. Measure with the same font and
+    /// 88-point maximum as the widget so only actual overflow gets phase two.
     private static func compactLineNeedsMarquee(_ line: String) -> Bool {
-        let visualColumns = line.prefix(100).reduce(into: 0) { width, character in
-            let isASCII = character.unicodeScalars.allSatisfy { $0.value <= 0x7F }
-            width += isASCII ? 1 : 2
-        }
-        return visualColumns > 12
+        let base = UIFont.preferredFont(forTextStyle: .caption1)
+        let descriptor = base.fontDescriptor.withSymbolicTraits(.traitBold)
+            ?? base.fontDescriptor
+        let font = UIFont(descriptor: descriptor, size: base.pointSize)
+        let text = String(line.prefix(100)) as NSString
+        return ceil(text.size(withAttributes: [.font: font]).width) > 88
     }
 
     private static func content(
