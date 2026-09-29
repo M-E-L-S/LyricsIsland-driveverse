@@ -13,7 +13,7 @@ model and lazy search pipeline; it does not embed the original .NET project.
 
 ## Lyricify Backgrounds
 
-The artwork-derived mesh, blurred layers, and independent rotation in the
+The artwork-derived mesh and independently moving color layers in the
 full-screen lyrics background were informed by
 [WXRIW/Lyricify-Backgrounds](https://github.com/WXRIW/Lyricify-Backgrounds),
 Copyright its contributors, licensed under the

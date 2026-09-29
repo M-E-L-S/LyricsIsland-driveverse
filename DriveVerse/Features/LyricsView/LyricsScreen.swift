@@ -22,11 +22,11 @@ struct LyricsScreen: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .background {
-                // A background modifier never contributes its intrinsic size
-                // to foreground layout. This prevents the 640 px artwork from
-                // widening the player while still painting under safe areas.
+                // Keep the animated mesh out of foreground layout while it
+                // paints under the safe areas.
                 LyricsBackdrop(artworkData: model.nowPlaying?.displayArtworkData
-                    ?? model.nowPlaying?.artworkData)
+                    ?? model.nowPlaying?.artworkData,
+                    isPlaying: model.nowPlaying?.isPlaying == true)
             }
         }
         .preferredColorScheme(.dark)
@@ -407,6 +407,8 @@ struct SyncedLyricsView: View {
                         activeColor: .white,
                         pendingColor: .white.opacity(0.34)
                     )
+                } else if line.words?.isEmpty == false {
+                    StaticWordTimedText(line: line, options: options)
                 } else {
                     Text(LyricsTextRenderer.primary(for: line, options: options))
                 }
@@ -426,8 +428,13 @@ struct SyncedLyricsView: View {
         .foregroundStyle(.white)
         .opacity(opacity(for: index))
         .blur(radius: blurRadius(for: index))
-        .scaleEffect(isCurrent ? 1 : 0.985, anchor: .leading)
         .animation(.timingCurve(0.22, 0.68, 0.24, 1, duration: 0.85), value: currentIndex)
+        .offset(y: layeredLift(for: index))
+        .animation(
+            .timingCurve(0.22, 0.68, 0.24, 1, duration: 1.15)
+                .delay(Double(min(4, max(0, (currentIndex ?? index) - index))) * 0.07),
+            value: currentIndex
+        )
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
@@ -445,16 +452,23 @@ struct SyncedLyricsView: View {
         return abs(index - currentIndex) == 1 ? 1.2 : 2.4
     }
 
+    private func layeredLift(for index: Int) -> CGFloat {
+        guard let currentIndex else { return 0 }
+        // Each newly sung row joins the rows above it in a one-way lift.
+        // Forward playback never sets a downward starting offset.
+        return -CGFloat(min(4, max(0, currentIndex - index + 1))) * 7
+    }
+
     private var lyricFocusAnchor: UnitPoint {
         UnitPoint(x: 0.5, y: 0.24)
     }
 
     private var activeBreatherIndex: Int? {
-        guard let lyricPositionMs else { return nil }
-        return lines.indices.first { index in
-            guard let gap = breathingGap(after: index) else { return false }
-            return lyricPositionMs >= gap.startTimeMs && lyricPositionMs < gap.endTimeMs
-        }
+        guard let lyricPositionMs, let currentIndex,
+              let gap = breathingGap(after: currentIndex),
+              lyricPositionMs >= gap.startTimeMs,
+              lyricPositionMs < gap.endTimeMs else { return nil }
+        return currentIndex
     }
 
     private func breathingGap(after index: Int) -> BreathingGap? {
@@ -513,6 +527,7 @@ private struct BreathingDots: View {
 
     var body: some View {
         TimelineView(.animation(
+            minimumInterval: 1.0 / 20.0,
             paused: reduceMotion || !isActive || playback?.isPlaying != true
         )) { timeline in
             let position = playback.map {
@@ -681,17 +696,24 @@ private struct AlbumPlayerPane: View {
 
 private struct LyricsBackdrop: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var animationOrigin = Date()
     let artworkData: Data?
+    let isPlaying: Bool
 
     var body: some View {
         GeometryReader { geometry in
             let palette = meshColors
-            TimelineView(.animation(minimumInterval: 1.0 / 15.0, paused: reduceMotion)) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 10.0,
+                                    paused: reduceMotion || scenePhase != .active || !isPlaying)) { timeline in
                 let time = reduceMotion ? 0 : timeline.date.timeIntervalSince(animationOrigin)
                 let lightCenter = UnitPoint(
-                    x: 0.55 + CGFloat(sin(time * 0.095)) * 0.22,
-                    y: 0.30 + CGFloat(cos(time * 0.075)) * 0.17
+                    x: 0.50 + CGFloat(sin(time * 0.44)) * 0.34,
+                    y: 0.44 + CGFloat(cos(time * 0.39)) * 0.30
+                )
+                let secondCenter = UnitPoint(
+                    x: 0.50 + CGFloat(cos(time * 0.33 + 1.7)) * 0.36,
+                    y: 0.50 + CGFloat(sin(time * 0.37 + 0.8)) * 0.35
                 )
 
                 ZStack {
@@ -702,44 +724,27 @@ private struct LyricsBackdrop: View {
                         colors: palette,
                         background: palette[5]
                     )
-                    .blur(radius: 30)
-                    .scaleEffect(1.18)
-#if canImport(UIKit)
-                    if let image = ArtworkImageCache.image(from: artworkData) {
-                        // Lyricify's iOS-inspired background combines a moving
-                        // mesh with independently rotating artwork layers.
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: geometry.size.width, height: geometry.size.height)
-                            .saturation(1.30)
-                            .blur(radius: 72)
-                            .scaleEffect(1.75)
-                            .rotationEffect(.degrees(time * 3.0))
-                            .opacity(0.30)
-
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: geometry.size.width, height: geometry.size.height)
-                            .saturation(1.45)
-                            .blur(radius: 100)
-                            .scaleEffect(1.90)
-                            .rotationEffect(.degrees(-time * 4.3))
-                            .offset(x: geometry.size.width * 0.22,
-                                    y: -geometry.size.height * 0.14)
-                            .blendMode(.screen)
-                            .opacity(0.17)
-                    }
-#endif
-                    Color.black.opacity(0.42)
+                    .scaleEffect(1.28)
+                    .rotationEffect(.degrees(sin(time * 0.28) * 7))
                     RadialGradient(
-                        colors: [.white.opacity(0.10), .clear],
+                        colors: [palette[5].opacity(0.70), .clear],
                         center: lightCenter,
-                        startRadius: 18,
-                        endRadius: max(420, geometry.size.height * 0.72)
+                        startRadius: 0,
+                        endRadius: max(240, geometry.size.width * 0.85)
                     )
-                    .blendMode(.softLight)
+                    RadialGradient(
+                        colors: [palette[10].opacity(0.62), .clear],
+                        center: secondCenter,
+                        startRadius: 0,
+                        endRadius: max(260, geometry.size.width * 0.95)
+                    )
+                    Color.black.opacity(0.28)
+                    RadialGradient(
+                        colors: [.white.opacity(0.16), .clear],
+                        center: lightCenter,
+                        startRadius: 0,
+                        endRadius: max(240, geometry.size.width * 0.80)
+                    )
                     LinearGradient(
                         stops: [
                             .init(color: .clear, location: 0),
@@ -773,10 +778,10 @@ private struct LyricsBackdrop: View {
             var x = Float(column) / 3
             var y = Float(row) / 3
             if column > 0 && column < 3 {
-                x += Float(sin(time * 0.36 + Double(row) * 1.7 + Double(column) * 0.8)) * 0.10
+                x += Float(sin(time * 0.55 + Double(row) * 1.7 + Double(column) * 0.8)) * 0.13
             }
             if row > 0 && row < 3 {
-                y += Float(cos(time * 0.31 + Double(column) * 1.5 + Double(row) * 0.9)) * 0.10
+                y += Float(cos(time * 0.50 + Double(column) * 1.5 + Double(row) * 0.9)) * 0.13
             }
             return SIMD2(x, y)
         }

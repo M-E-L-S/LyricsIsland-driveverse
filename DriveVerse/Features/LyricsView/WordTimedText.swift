@@ -15,10 +15,15 @@ struct WordTimedText: View {
     var pendingColor: Color = .secondary.opacity(0.45)
 
     var body: some View {
-        // Let SwiftUI follow the display's native animation cadence (including
-        // ProMotion) instead of imposing a second, lower-frequency clock.
-        TimelineView(.animation(paused: !playback.isPlaying)) { timeline in
-            if let words = line.words, !words.isEmpty {
+        if let words = line.words, !words.isEmpty {
+            // Conversion is stable for the entire line; keep it out of the
+            // clock-driven view update.
+            let renderedWords = words.map {
+                ChineseTextConverter.convert($0.original, using: options.chineseConversion)
+            }
+            let accessibilityText = LyricsTextRenderer.primary(for: line, options: options)
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0,
+                                    paused: !playback.isPlaying)) { timeline in
                 let position = SyncEngine.extrapolatedPositionMs(
                     anchor: playback,
                     at: timeline.date
@@ -27,33 +32,40 @@ struct WordTimedText: View {
                 let states = words.map { fillState(for: $0, at: position) }
                 LyricsWordFlowLayout {
                     ForEach(Array(words.enumerated()), id: \.offset) { index, word in
-                        ProgressiveWordFill(
-                            text: ChineseTextConverter.convert(
-                                word.original,
-                                using: options.chineseConversion
-                            ),
-                            fraction: states[index].fraction,
-                            liftProgress: min(1, max(0, Double(position - word.startTimeMs)
-                                / Double(max(750, word.endTimeMs - word.startTimeMs)))),
-                            isActive: states[index].isActive,
-                            previewIntensity: previewIntensity(
-                                for: index,
-                                states: states
-                            ),
-                            isLastWord: index == words.count - 1,
-                            durationMs: max(0, word.endTimeMs - word.startTimeMs),
-                            completedColor: completedColor,
-                            activeColor: activeColor,
-                            pendingColor: pendingColor
-                        )
+                        let lift = min(1, max(0, Double(position - word.startTimeMs)
+                            / Double(max(750, word.endTimeMs - word.startTimeMs))))
+                        let preview = previewIntensity(for: index, states: states)
+                        Group {
+                            if states[index].fraction >= 1 && lift >= 1 {
+                                Text(renderedWords[index])
+                                    .foregroundStyle(completedColor)
+                                    .offset(y: -2.2)
+                            } else if states[index].fraction == 0 && preview == 0 {
+                                Text(renderedWords[index])
+                                    .foregroundStyle(pendingColor)
+                            } else {
+                                ProgressiveWordFill(
+                                    text: renderedWords[index],
+                                    fraction: states[index].fraction,
+                                    liftProgress: lift,
+                                    isActive: states[index].isActive,
+                                    previewIntensity: preview,
+                                    isLastWord: index == words.count - 1,
+                                    durationMs: max(0, word.endTimeMs - word.startTimeMs),
+                                    completedColor: completedColor,
+                                    activeColor: activeColor,
+                                    pendingColor: pendingColor
+                                )
+                            }
+                        }
                         .accessibilityHidden(true)
                     }
                 }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(Text(verbatim: LyricsTextRenderer.primary(for: line, options: options)))
-            } else {
-                Text(LyricsTextRenderer.primary(for: line, options: options))
+                .accessibilityLabel(Text(verbatim: accessibilityText))
             }
+        } else {
+            Text(LyricsTextRenderer.primary(for: line, options: options))
         }
     }
 
@@ -85,6 +97,31 @@ struct WordTimedText: View {
 
     private func smoothStep(_ value: Double) -> Double {
         value * value * (3 - 2 * value)
+    }
+}
+
+/// Uses the same token layout as the timed line without running a display clock.
+/// This keeps spaces, wrapping, and line height stable when playback reaches it.
+struct StaticWordTimedText: View {
+    let line: LyricsLine
+    let options: LyricsDisplayOptions
+
+    var body: some View {
+        if let words = line.words, !words.isEmpty {
+            LyricsWordFlowLayout {
+                ForEach(Array(words.enumerated()), id: \.offset) { _, word in
+                    Text(ChineseTextConverter.convert(
+                        word.original,
+                        using: options.chineseConversion
+                    ))
+                    .accessibilityHidden(true)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(verbatim: LyricsTextRenderer.primary(for: line, options: options)))
+        } else {
+            Text(LyricsTextRenderer.primary(for: line, options: options))
+        }
     }
 }
 
