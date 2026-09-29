@@ -289,8 +289,10 @@ struct SyncedLyricsView: View {
     @State private var resumeFollowingTask: Task<Void, Never>?
     @State private var rowPositions: [Int: CGFloat] = [:]
     @State private var pullOffsets: [Int: CGFloat] = [:]
+    @State private var pullVelocities: [Int: CGFloat] = [:]
     @State private var pullOrigin = 0
     @State private var pullProgress: CGFloat = 1
+    @State private var pullTiming = LyricPullTiming.standard
     @State private var pullStartedAt: Date?
     @State private var pullGeneration = 0
     @State private var focusedBreatherIndex: Int?
@@ -309,6 +311,7 @@ struct SyncedLyricsView: View {
                                 pullGeneration += 1
                                 withTransaction(Transaction(animation: nil)) {
                                     pullOffsets = [:]
+                                    pullVelocities = [:]
                                     pullProgress = 1
                                 }
                                 resumeFollowingTask?.cancel()
@@ -332,6 +335,8 @@ struct SyncedLyricsView: View {
                                 lineIndex: index,
                                 originIndex: pullOrigin,
                                 initialOffset: pullOffsets[index] ?? 0,
+                                initialVelocity: pullVelocities[index] ?? 0,
+                                timing: pullTiming,
                                 progress: pullProgress
                             ))
                             .id(index)
@@ -349,6 +354,8 @@ struct SyncedLyricsView: View {
                                     lineIndex: index,
                                     originIndex: pullOrigin,
                                     initialOffset: pullOffsets[index] ?? 0,
+                                    initialVelocity: pullVelocities[index] ?? 0,
+                                    timing: pullTiming,
                                     progress: pullProgress
                                 ))
                                 .id(BreathingRowID(lineIndex: index))
@@ -364,7 +371,7 @@ struct SyncedLyricsView: View {
             .scrollIndicators(followsPlayback ? .hidden : .visible)
             .onPreferenceChange(LyricRowPositionKey.self) { positions in
                 if let pullStartedAt,
-                   Date().timeIntervalSince(pullStartedAt) < OneWayLyricPull.totalDuration {
+                   Date().timeIntervalSince(pullStartedAt) < pullTiming.totalDuration {
                     return
                 }
                 rowPositions.merge(positions) { _, new in new }
@@ -396,6 +403,7 @@ struct SyncedLyricsView: View {
                 if isManualSeek { return }
                 let wasFocusedOnBreather = oldIndex != nil && focusedBreatherIndex == oldIndex
                 focusedBreatherIndex = nil
+                let nextTiming = LyricPullTiming.forLine(newIndex, in: lines)
                 guard !reduceMotion, !wasFocusedOnBreather,
                       let oldIndex, oldIndex >= 3, newIndex == oldIndex + 1,
                       let oldY = rowPositions[oldIndex],
@@ -404,9 +412,10 @@ struct SyncedLyricsView: View {
                     pullGeneration += 1
                     withTransaction(Transaction(animation: nil)) {
                         pullOffsets = [:]
+                        pullVelocities = [:]
                         pullProgress = 1
                     }
-                    withAnimation(.smooth(duration: 1.18)) {
+                    withAnimation(.smooth(duration: nextTiming.followDuration)) {
                         proxy.scrollTo(newIndex, anchor: lyricFocusAnchor)
                     }
                     return
@@ -416,27 +425,37 @@ struct SyncedLyricsView: View {
                 let now = Date()
                 let previousElapsed = pullStartedAt.map { now.timeIntervalSince($0) } ?? .infinity
                 var nextOffsets: [Int: CGFloat] = [:]
+                var nextVelocities: [Int: CGFloat] = [:]
                 for index in lines.indices {
-                    let previousDelay = Double(min(7, abs(index - pullOrigin))) * 0.06
-                    let previousOffset = (pullOffsets[index] ?? 0) * OneWayLyricPull.remaining(
-                        elapsed: previousElapsed,
-                        delay: previousDelay
+                    let previousDelay = pullTiming.delay(
+                        lineIndex: index,
+                        originIndex: pullOrigin
                     )
-                    nextOffsets[index] = previousOffset + travel
+                    let previousMotion = OneWayLyricPull.motion(
+                        initialOffset: pullOffsets[index] ?? 0,
+                        initialVelocity: pullVelocities[index] ?? 0,
+                        elapsed: previousElapsed,
+                        delay: previousDelay,
+                        settleDuration: pullTiming.settleDuration
+                    )
+                    nextOffsets[index] = previousMotion.offset + travel
+                    nextVelocities[index] = previousMotion.velocity
                 }
 
                 pullGeneration += 1
                 let generation = pullGeneration
                 withTransaction(Transaction(animation: nil)) {
                     pullOffsets = nextOffsets
+                    pullVelocities = nextVelocities
                     pullOrigin = newIndex - 3
+                    pullTiming = nextTiming
                     pullProgress = 0
                     pullStartedAt = now
                     proxy.scrollTo(newIndex, anchor: lyricFocusAnchor)
                 }
                 DispatchQueue.main.async {
                     guard pullGeneration == generation else { return }
-                    withAnimation(.linear(duration: OneWayLyricPull.totalDuration)) {
+                    withAnimation(.linear(duration: nextTiming.totalDuration)) {
                         pullProgress = 1
                     }
                 }
@@ -444,7 +463,7 @@ struct SyncedLyricsView: View {
             .onChange(of: activeBreatherIndex) { _, lineIndex in
                 guard followsPlayback, let lineIndex else { return }
                 focusedBreatherIndex = lineIndex
-                withAnimation(.timingCurve(0.22, 0.68, 0.24, 1, duration: 1.10)) {
+                withAnimation(.timingCurve(0.22, 0.68, 0.24, 1, duration: 1.05)) {
                     proxy.scrollTo(BreathingRowID(lineIndex: lineIndex), anchor: lyricFocusAnchor)
                 }
             }
@@ -593,16 +612,45 @@ private struct LyricRowPositionKey: PreferenceKey {
     }
 }
 
+private struct LyricPullTiming {
+    let followDuration: Double
+    let stagger: Double
+
+    static let standard = LyricPullTiming(followDuration: 1.0)
+
+    init(followDuration: Double) {
+        self.followDuration = followDuration
+        stagger = followDuration * 0.04
+    }
+
+    var settleDuration: Double { followDuration - 3 * stagger }
+    var totalDuration: Double { settleDuration + 7 * stagger }
+
+    func delay(lineIndex: Int, originIndex: Int) -> Double {
+        Double(min(7, abs(lineIndex - originIndex))) * stagger
+    }
+
+    static func forLine(_ index: Int, in lines: [LyricsLine]) -> LyricPullTiming {
+        let nextIntervalMs = index + 1 < lines.count
+            ? max(0, lines[index + 1].startTimeMs - lines[index].startTimeMs)
+            : 1_500
+        // Short lines can finish sooner; long holds never stretch the pull
+        // beyond one second for the active row.
+        let followDuration = min(1.0, max(0.58, Double(nextIntervalMs) / 1_000 * 0.72))
+        return LyricPullTiming(followDuration: followDuration)
+    }
+}
+
 /// Keeps each row at its previous screen position when the list advances,
-/// then lets the rows follow upward one by one. A critically damped response
-/// only approaches zero, so the rows never reverse direction or bounce.
+/// then lets the rows follow upward one by one. The damped response carries
+/// its velocity through short lines without reversing direction or bouncing.
 private struct OneWayLyricPull: AnimatableModifier {
-    static let totalDuration = 1.65
-    private static let settleDuration = 1.05
 
     let lineIndex: Int
     let originIndex: Int
     let initialOffset: CGFloat
+    let initialVelocity: CGFloat
+    let timing: LyricPullTiming
     var progress: CGFloat
 
     var animatableData: CGFloat {
@@ -611,20 +659,54 @@ private struct OneWayLyricPull: AnimatableModifier {
     }
 
     func body(content: Content) -> some View {
-        let delay = Double(min(7, abs(lineIndex - originIndex))) * 0.06
-        let offset = initialOffset * Self.remaining(
-            elapsed: Double(progress) * Self.totalDuration,
-            delay: delay
+        let state = Self.motion(
+            initialOffset: initialOffset,
+            initialVelocity: initialVelocity,
+            elapsed: Double(progress) * timing.totalDuration,
+            delay: timing.delay(lineIndex: lineIndex, originIndex: originIndex),
+            settleDuration: timing.settleDuration
         )
-        content.offset(y: offset)
+        content.offset(y: state.offset)
     }
 
-    static func remaining(elapsed: Double, delay: Double) -> CGFloat {
-        let fraction = min(1, max(0, (elapsed - delay) / settleDuration))
-        let frequency = 6.5
-        let tail = (1 + frequency * fraction) * exp(-frequency * fraction)
-        let endTail = (1 + frequency) * exp(-frequency)
-        return CGFloat(max(0, (tail - endTail) / (1 - endTail)))
+    static func motion(
+        initialOffset: CGFloat,
+        initialVelocity: CGFloat,
+        elapsed: Double,
+        delay: Double,
+        settleDuration: Double
+    ) -> (offset: CGFloat, velocity: CGFloat) {
+        let startOffset = max(0, Double(initialOffset))
+        let startVelocity = min(0, Double(initialVelocity))
+        if elapsed < delay {
+            let offset = max(0, startOffset + startVelocity * elapsed)
+            return (CGFloat(offset), CGFloat(offset > 0 ? startVelocity : 0))
+        }
+
+        let offsetAtRelease = max(0, startOffset + startVelocity * delay)
+        let time = elapsed - delay
+        guard offsetAtRelease > 0, time < settleDuration else { return (0, 0) }
+
+        let frequency = 5.5 / settleDuration
+        let velocityAtRelease = max(startVelocity, -frequency * offsetAtRelease)
+        let coefficient = velocityAtRelease + frequency * offsetAtRelease
+        let decay = exp(-frequency * time)
+        let rawOffset = (offsetAtRelease + coefficient * time) * decay
+        let rawVelocity = (velocityAtRelease - frequency * coefficient * time) * decay
+
+        let taperStart = settleDuration * 0.78
+        if time <= taperStart {
+            return (CGFloat(max(0, rawOffset)), CGFloat(min(0, rawVelocity)))
+        }
+
+        let taperDuration = settleDuration - taperStart
+        let fraction = (time - taperStart) / taperDuration
+        let fade = 1 - fraction * fraction * (3 - 2 * fraction)
+        let fadeVelocity = (-6 * fraction + 6 * fraction * fraction) / taperDuration
+        return (
+            CGFloat(max(0, rawOffset * fade)),
+            CGFloat(min(0, rawVelocity * fade + rawOffset * fadeVelocity))
+        )
     }
 }
 
@@ -639,6 +721,10 @@ private struct BreathingRowID: Hashable {
 
 private struct BreathingDots: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let pulseDurationMs = 580.0
+    private static let exitDurationMs = 240.0
+    private static let holdBeforeExitMs = 180.0
 
     let startTimeMs: Int
     let endTimeMs: Int
@@ -661,7 +747,8 @@ private struct BreathingDots: View {
                     Circle()
                         .fill(.white.opacity(0.25 + 0.75 * illumination(
                             for: index,
-                            progress: state.progress
+                            elapsed: state.elapsed,
+                            pulseSpacing: state.pulseSpacing
                         )))
                         .frame(width: 10, height: 10)
                 }
@@ -676,37 +763,56 @@ private struct BreathingDots: View {
 
     private var isActive: Bool {
         guard let reportedPositionMs else { return false }
-        return reportedPositionMs >= startTimeMs && reportedPositionMs < endTimeMs
+        // The position publisher ticks every 250 ms. Wake the display clock
+        // slightly early so the first lift starts at its intended timestamp.
+        return reportedPositionMs >= startTimeMs - 300 && reportedPositionMs < endTimeMs
     }
 
     private func visualState(at position: Int) -> (
-        opacity: Double, offsetY: CGFloat, scale: CGFloat, progress: Double
+        opacity: Double, offsetY: CGFloat, scale: CGFloat,
+        elapsed: Double, pulseSpacing: Double
     ) {
-        let duration = max(1, endTimeMs - startTimeMs)
-        let progress = min(1, max(0, Double(position - startTimeMs) / Double(duration)))
+        let duration = Double(max(1, endTimeMs - startTimeMs))
+        let elapsed = Double(position - startTimeMs)
+        let pulseSpacing = max(0, (
+            duration - Self.exitDurationMs - Self.holdBeforeExitMs - Self.pulseDurationMs
+        ) / 2)
 
         if position < startTimeMs || position >= endTimeMs {
-            return (0, 12, 0.86, progress)
+            return (0, 16, 0.86, elapsed, pulseSpacing)
         }
         if reduceMotion {
-            return (0.88, -2, 1, 1)
-        }
-        if progress < 0.30 {
-            let entrance = smoothStep(progress / 0.30)
-            return (entrance, 9 - CGFloat(entrance) * 13, 0.88 + CGFloat(entrance) * 0.12, progress)
-        }
-        if progress > 0.78 {
-            let exit = min(1, max(0, (progress - 0.78) / 0.22))
-            let drop = smoothStep(exit)
-            return (1 - drop, -4 + CGFloat(drop) * 16, 1 - CGFloat(exit) * 0.10, progress)
+            return (0.88, 0, 1, duration, pulseSpacing)
         }
 
-        let breath = sin((progress - 0.30) / 0.48 * .pi * 2)
-        return (0.90 + breath * 0.08, -4 - CGFloat(breath) * 1.2, 1 + CGFloat(breath) * 0.04, progress)
+        let exitStart = duration - Self.exitDurationMs
+        if elapsed >= exitStart {
+            let exit = min(1, max(0, (elapsed - exitStart) / Self.exitDurationMs))
+            return (1 - smoothStep(exit), CGFloat(16 * exit * exit),
+                    CGFloat(1 - 0.14 * exit), elapsed, pulseSpacing)
+        }
+
+        let lift = (0..<3).map { index in
+            pulseLift(at: elapsed - Double(index) * pulseSpacing)
+        }.max() ?? 0
+        let entrance = smoothStep(min(1, max(0, elapsed / 180)))
+        return (entrance, -CGFloat(7.5 * lift), CGFloat(1 + 0.05 * lift),
+                elapsed, pulseSpacing)
     }
 
-    private func illumination(for index: Int, progress: Double) -> Double {
-        smoothStep(min(1, max(0, (progress - Double(index) * 0.13) / 0.24)))
+    private func pulseLift(at elapsed: Double) -> Double {
+        guard elapsed >= 0, elapsed < Self.pulseDurationMs else { return 0 }
+        let riseDuration = Self.pulseDurationMs * 0.42
+        if elapsed < riseDuration {
+            return smoothStep(elapsed / riseDuration)
+        }
+        return 1 - smoothStep((elapsed - riseDuration) / (Self.pulseDurationMs - riseDuration))
+    }
+
+    private func illumination(for index: Int, elapsed: Double, pulseSpacing: Double) -> Double {
+        let riseDuration = Self.pulseDurationMs * 0.42
+        let rise = (elapsed - Double(index) * pulseSpacing) / riseDuration
+        return smoothStep(min(1, max(0, rise)))
     }
 
     private func smoothStep(_ value: Double) -> Double {
