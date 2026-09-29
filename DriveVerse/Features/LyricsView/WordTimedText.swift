@@ -3,8 +3,8 @@ import SwiftUI
 
 /// Apple Music-style word timing: each glyph is gradually filled from its
 /// leading edge instead of switching the entire word on at once. Completed
-/// text also settles a fraction upward, giving the sung phrase a restrained
-/// sense of motion without a conspicuous glow.
+/// text rises on a slower curve, while a held final token briefly lifts and
+/// glows before settling to the same height as its neighbors.
 struct WordTimedText: View {
     let line: LyricsLine
     let playback: NowPlayingState
@@ -25,8 +25,6 @@ struct WordTimedText: View {
                 ) - timingOffsetMs
 
                 let states = words.map { fillState(for: $0, at: position) }
-                let activeIndex = states.firstIndex(where: \.isActive)
-
                 LyricsWordFlowLayout {
                     ForEach(Array(words.enumerated()), id: \.offset) { index, word in
                         ProgressiveWordFill(
@@ -35,10 +33,11 @@ struct WordTimedText: View {
                                 using: options.chineseConversion
                             ),
                             fraction: states[index].fraction,
+                            liftProgress: min(1, max(0, Double(position - word.startTimeMs)
+                                / Double(max(750, word.endTimeMs - word.startTimeMs)))),
                             isActive: states[index].isActive,
                             previewIntensity: previewIntensity(
                                 for: index,
-                                activeIndex: activeIndex,
                                 states: states
                             ),
                             isLastWord: index == words.count - 1,
@@ -74,12 +73,13 @@ struct WordTimedText: View {
 
     private func previewIntensity(
         for index: Int,
-        activeIndex: Int?,
         states: [WordFillState]
     ) -> Double {
-        guard let activeIndex, index == activeIndex + 1 else { return 0 }
-        let progress = states[activeIndex].fraction
+        guard index > 0, states[index].fraction < 1 else { return 0 }
+        let progress = states[index - 1].fraction
         let arrival = min(1, max(0, (progress - 0.52) / 0.48))
+        // Keep the preview under the real fill until the whole word is bright.
+        // Removing it at the first active frame made the remaining glyph dim.
         return smoothStep(arrival) * 0.30
     }
 
@@ -98,6 +98,7 @@ private struct ProgressiveWordFill: View {
 
     let text: String
     let fraction: Double
+    let liftProgress: Double
     let isActive: Bool
     let previewIntensity: Double
     let isLastWord: Bool
@@ -131,13 +132,16 @@ private struct ProgressiveWordFill: View {
 
             if isLongTail, isActive {
                 Text(text)
-                    .foregroundStyle(Color.white.opacity(tailInnerLight))
+                    .foregroundStyle(Color.white.opacity(tailGlow * 0.72))
+                    .mask { fillMask }
+                    .blur(radius: 7)
+
+                Text(text)
+                    .foregroundStyle(Color.white.opacity(tailGlow * 0.32))
                     .mask { fillMask }
             }
         }
-        // Apple Music's completed words lift only subtly. Driving this from
-        // the same fraction keeps the movement continuous within every glyph.
-        .offset(y: -(1.35 * easedLift + tailLift))
+        .offset(y: -(2.2 * easedLift + tailLift))
     }
 
     @ViewBuilder
@@ -171,24 +175,29 @@ private struct ProgressiveWordFill: View {
     }
 
     private var easedLift: Double {
-        1 - pow(1 - fraction, 3)
+        let progress = min(1, max(0, (liftProgress - 0.06) / 0.94))
+        let remaining = 1 - progress
+        // Cubic Bézier with a gentle start and finish, driven by the word clock.
+        return 3 * remaining * remaining * progress * 0.08
+            + 3 * remaining * progress * progress * 0.90
+            + progress * progress * progress
     }
 
     private var isLongTail: Bool {
-        isLastWord && durationMs >= 850
+        isLastWord && durationMs >= 600
     }
 
     private var tailProgress: Double {
         guard isLongTail else { return 0 }
-        return min(1, max(0, (fraction - 0.18) / 0.82))
+        return min(1, max(0, (fraction - 0.12) / 0.88))
     }
 
     private var tailLift: Double {
-        5.4 * (1 - pow(1 - tailProgress, 3))
+        6.2 * pow(sin(tailProgress * .pi), 1.3)
     }
 
-    private var tailInnerLight: Double {
-        0.10 + sin(tailProgress * .pi) * 0.24
+    private var tailGlow: Double {
+        pow(sin(tailProgress * .pi), 1.2) * 0.88
     }
 }
 

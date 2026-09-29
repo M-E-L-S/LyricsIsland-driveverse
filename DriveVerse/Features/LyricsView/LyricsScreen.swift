@@ -346,13 +346,13 @@ struct SyncedLyricsView: View {
             }
             .onChange(of: currentIndex) { _, newIndex in
                 guard followsPlayback, let newIndex else { return }
-                withAnimation(.timingCurve(0.18, 0.82, 0.20, 1, duration: 0.72)) {
+                withAnimation(.timingCurve(0.22, 0.68, 0.24, 1, duration: 1.35)) {
                     proxy.scrollTo(newIndex, anchor: lyricFocusAnchor)
                 }
             }
             .onChange(of: activeBreatherIndex) { _, lineIndex in
                 guard followsPlayback, let lineIndex else { return }
-                withAnimation(.timingCurve(0.18, 0.82, 0.20, 1, duration: 0.58)) {
+                withAnimation(.timingCurve(0.22, 0.68, 0.24, 1, duration: 1.10)) {
                     proxy.scrollTo(BreathingRowID(lineIndex: lineIndex), anchor: lyricFocusAnchor)
                 }
             }
@@ -427,7 +427,7 @@ struct SyncedLyricsView: View {
         .opacity(opacity(for: index))
         .blur(radius: blurRadius(for: index))
         .scaleEffect(isCurrent ? 1 : 0.985, anchor: .leading)
-        .animation(.easeOut(duration: 0.28), value: currentIndex)
+        .animation(.timingCurve(0.22, 0.68, 0.24, 1, duration: 0.85), value: currentIndex)
         .modifier(SequentialLyricCatchUp(
             lineIndex: index,
             currentIndex: currentIndex,
@@ -469,16 +469,16 @@ struct SyncedLyricsView: View {
         let start: Int
 
         if line.original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            start = line.startTimeMs
+            start = line.startTimeMs + 350
         } else if let lastWordEnd = line.words?.last?.endTimeMs {
-            start = lastWordEnd
+            start = lastWordEnd + 450
         } else {
             let interval = nextStart - line.startTimeMs
-            guard interval >= 6_000 else { return nil }
-            start = line.startTimeMs + min(4_500, max(2_800, Int(Double(interval) * 0.56)))
+            guard interval >= 8_000 else { return nil }
+            start = line.startTimeMs + max(4_800, Int(Double(interval) * 0.68))
         }
 
-        guard nextStart - start >= 1_400 else { return nil }
+        guard nextStart - start >= 2_400 else { return nil }
         return BreathingGap(startTimeMs: start, endTimeMs: nextStart)
     }
 
@@ -518,14 +518,14 @@ private struct SequentialLyricCatchUp: ViewModifier {
 
                 let direction: CGFloat = newIndex > oldIndex ? 1 : -1
                 let distance = min(7, abs(lineIndex - newIndex))
-                lagOffset = direction * (15 + CGFloat(distance) * 1.4)
+                lagOffset = direction * (25 + CGFloat(distance) * 2.2)
 
                 // Commit the lag first, then let nearby rows catch the new
                 // scroll position before progressively more distant rows.
                 DispatchQueue.main.async {
                     withAnimation(
-                        .timingCurve(0.18, 0.82, 0.20, 1, duration: 0.58)
-                            .delay(Double(distance) * 0.045)
+                        .timingCurve(0.22, 0.68, 0.24, 1, duration: 1.20)
+                            .delay(Double(distance) * 0.085)
                     ) {
                         lagOffset = 0
                     }
@@ -564,17 +564,20 @@ private struct BreathingDots: View {
             } ?? reportedPositionMs ?? startTimeMs
             let state = visualState(at: position)
 
-            HStack(spacing: 7) {
-                ForEach(0..<3, id: \.self) { _ in
+            HStack(spacing: 9) {
+                ForEach(0..<3, id: \.self) { index in
                     Circle()
-                        .fill(.white)
-                        .frame(width: 6, height: 6)
+                        .fill(.white.opacity(0.25 + 0.75 * illumination(
+                            for: index,
+                            progress: state.progress
+                        )))
+                        .frame(width: 10, height: 10)
                 }
             }
             .scaleEffect(state.scale)
             .offset(y: state.offsetY)
             .opacity(state.opacity)
-            .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         }
         .accessibilityHidden(true)
     }
@@ -584,32 +587,34 @@ private struct BreathingDots: View {
         return reportedPositionMs >= startTimeMs && reportedPositionMs < endTimeMs
     }
 
-    private func visualState(at position: Int) -> (opacity: Double, offsetY: CGFloat, scale: CGFloat) {
+    private func visualState(at position: Int) -> (
+        opacity: Double, offsetY: CGFloat, scale: CGFloat, progress: Double
+    ) {
         let duration = max(1, endTimeMs - startTimeMs)
         let progress = min(1, max(0, Double(position - startTimeMs) / Double(duration)))
 
         if position < startTimeMs || position >= endTimeMs {
-            return (0, 12, 0.86)
+            return (0, 12, 0.86, progress)
         }
         if reduceMotion {
-            return (0.88, -2, 1)
+            return (0.88, -2, 1, 1)
         }
-        if progress < 0.22 {
-            let entrance = easeOutCubic(progress / 0.22)
-            return (entrance, 8 - CGFloat(entrance) * 12, 0.84 + CGFloat(entrance) * 0.16)
+        if progress < 0.30 {
+            let entrance = smoothStep(progress / 0.30)
+            return (entrance, 9 - CGFloat(entrance) * 13, 0.88 + CGFloat(entrance) * 0.12, progress)
         }
-        if progress > 0.72 {
-            let exit = min(1, max(0, (progress - 0.72) / 0.28))
-            let drop = exit * exit * exit
-            return (1 - smoothStep(exit), -4 + CGFloat(drop) * 19, 1 - CGFloat(exit) * 0.12)
+        if progress > 0.78 {
+            let exit = min(1, max(0, (progress - 0.78) / 0.22))
+            let drop = smoothStep(exit)
+            return (1 - drop, -4 + CGFloat(drop) * 16, 1 - CGFloat(exit) * 0.10, progress)
         }
 
-        let breath = sin((progress - 0.22) / 0.50 * .pi * 2)
-        return (0.84 + breath * 0.10, -4 - CGFloat(breath) * 0.8, 0.97 + CGFloat(breath) * 0.03)
+        let breath = sin((progress - 0.30) / 0.48 * .pi * 2)
+        return (0.90 + breath * 0.08, -4 - CGFloat(breath) * 1.2, 1 + CGFloat(breath) * 0.04, progress)
     }
 
-    private func easeOutCubic(_ value: Double) -> Double {
-        1 - pow(1 - value, 3)
+    private func illumination(for index: Int, progress: Double) -> Double {
+        smoothStep(min(1, max(0, (progress - Double(index) * 0.13) / 0.24)))
     }
 
     private func smoothStep(_ value: Double) -> Double {
@@ -724,14 +729,14 @@ private struct LyricsBackdrop: View {
 
     var body: some View {
         GeometryReader { geometry in
-            TimelineView(.animation(minimumInterval: 1.0 / 12.0, paused: reduceMotion)) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 15.0, paused: reduceMotion)) { timeline in
                 let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
-                let driftX = CGFloat(sin(time * 0.10)) * 13
-                let driftY = CGFloat(cos(time * 0.08)) * 10
-                let breathingScale = 1.35 + CGFloat(sin(time * 0.065)) * 0.018
+                let driftX = CGFloat(sin(time * 0.11)) * 32
+                let driftY = CGFloat(cos(time * 0.085)) * 25
+                let breathingScale = 1.48 + CGFloat(sin(time * 0.07)) * 0.06
                 let lightCenter = UnitPoint(
-                    x: 0.64 + CGFloat(sin(time * 0.055)) * 0.16,
-                    y: 0.24 + CGFloat(cos(time * 0.045)) * 0.12
+                    x: 0.57 + CGFloat(sin(time * 0.075)) * 0.25,
+                    y: 0.28 + CGFloat(cos(time * 0.055)) * 0.20
                 )
 
                 ZStack {
@@ -746,20 +751,34 @@ private struct LyricsBackdrop: View {
                             .resizable()
                             .scaledToFill()
                             .frame(width: geometry.size.width, height: geometry.size.height)
-                            .saturation(1.50 + sin(time * 0.07) * 0.08)
-                            .contrast(1.12)
-                            .blur(radius: 58)
+                            .saturation(1.45)
+                            .contrast(1.08)
+                            .blur(radius: 62)
                             .scaleEffect(breathingScale)
                             .offset(x: driftX, y: driftY)
-                            .opacity(0.94)
+                            .opacity(0.90)
+
+                        // A second, slower artwork wash moves independently so
+                        // the colors flow rather than the whole image panning.
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .saturation(1.65)
+                            .blur(radius: 94)
+                            .scaleEffect(1.78)
+                            .rotationEffect(.degrees(sin(time * 0.035) * 9))
+                            .offset(x: -driftX * 1.35, y: -driftY * 1.50)
+                            .blendMode(.screen)
+                            .opacity(0.28)
                     }
 #endif
-                    Color.black.opacity(0.20)
+                    Color.black.opacity(0.30)
                     RadialGradient(
-                        colors: [.white.opacity(0.13), .clear],
+                        colors: [.white.opacity(0.16), .clear],
                         center: lightCenter,
-                        startRadius: 12,
-                        endRadius: max(420, geometry.size.height * 0.68)
+                        startRadius: 18,
+                        endRadius: max(420, geometry.size.height * 0.72)
                     )
                     .blendMode(.softLight)
                     LinearGradient(
