@@ -346,7 +346,7 @@ struct SyncedLyricsView: View {
             }
             .onChange(of: currentIndex) { _, newIndex in
                 guard followsPlayback, let newIndex else { return }
-                withAnimation(.smooth(duration: 0.95)) {
+                withAnimation(.smooth(duration: 1.18)) {
                     proxy.scrollTo(newIndex, anchor: lyricFocusAnchor)
                 }
             }
@@ -516,21 +516,26 @@ private struct SequentialLyricCatchUp: ViewModifier {
                 }
 
                 let direction: CGFloat = newIndex > oldIndex ? 1 : -1
-                let distance = min(7, abs(lineIndex - newIndex))
+                let triggerIndex = max(0, newIndex - 3)
+                let distanceFromTrigger = min(7, abs(lineIndex - triggerIndex))
+                let distanceFromCurrent = min(7, abs(lineIndex - newIndex))
+                let arrivalDelay = Double(distanceFromTrigger) * 0.06
+                let riseDuration = 0.28
+                let leadingDelay = 0.06
 
-                // Let the scroll begin first. Ease the small catch-up offset in
-                // from zero so a row never jumps downward on the first frame.
-                withAnimation(.easeIn(duration: 0.18).delay(0.06)) {
-                    lagOffset = direction * (9 + CGFloat(distance) * 0.7)
+                // Start the pull three lines above the active lyric, outside
+                // the visible focus area, then pass it down through the rows.
+                // Ease into the peak with zero end velocity before the spring
+                // returns, avoiding a sharp upward change of direction.
+                withAnimation(.easeInOut(duration: riseDuration).delay(leadingDelay + arrivalDelay)) {
+                    lagOffset = direction * (9 + CGFloat(distanceFromCurrent) * 0.7)
                 }
 
                 settleTask = Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 240_000_000)
+                    let settleDelay = leadingDelay + arrivalDelay + riseDuration
+                    try? await Task.sleep(nanoseconds: UInt64(settleDelay * 1_000_000_000))
                     guard !Task.isCancelled else { return }
-                    withAnimation(
-                        .spring(duration: 0.48, bounce: 0.06)
-                            .delay(Double(distance) * 0.045)
-                    ) {
+                    withAnimation(.spring(duration: 1.05, bounce: 0)) {
                         lagOffset = 0
                     }
                 }
