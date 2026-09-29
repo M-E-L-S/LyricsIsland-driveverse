@@ -271,6 +271,8 @@ struct LyricsScreen: View {
 // MARK: - Synchronized lyrics
 
 struct SyncedLyricsView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let lines: [LyricsLine]
     let currentIndex: Int?
     let playback: NowPlayingState?
@@ -285,6 +287,14 @@ struct SyncedLyricsView: View {
     @ScaledMetric(relativeTo: .title) private var baseLyricSize: CGFloat = 32
     @State private var followsPlayback = true
     @State private var resumeFollowingTask: Task<Void, Never>?
+    @State private var rowPositions: [Int: CGFloat] = [:]
+    @State private var pullOffsets: [Int: CGFloat] = [:]
+    @State private var pullOrigin = 0
+    @State private var pullProgress: CGFloat = 1
+    @State private var pullStartedAt: Date?
+    @State private var pullGeneration = 0
+    @State private var focusedBreatherIndex: Int?
+    @State private var pendingManualSeekIndex: Int?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -294,6 +304,13 @@ struct SyncedLyricsView: View {
                         Group {
                             Button {
                                 followsPlayback = true
+                                focusedBreatherIndex = nil
+                                pendingManualSeekIndex = index
+                                pullGeneration += 1
+                                withTransaction(Transaction(animation: nil)) {
+                                    pullOffsets = [:]
+                                    pullProgress = 1
+                                }
                                 resumeFollowingTask?.cancel()
                                 onSeek(line.startTimeMs)
                                 withAnimation(.snappy(duration: 0.35)) {
@@ -303,6 +320,20 @@ struct SyncedLyricsView: View {
                                 lyricLine(line, at: index)
                             }
                             .buttonStyle(.plain)
+                            .background {
+                                GeometryReader { geometry in
+                                    Color.clear.preference(
+                                        key: LyricRowPositionKey.self,
+                                        value: [index: geometry.frame(in: .named("lyricScrollContent")).minY]
+                                    )
+                                }
+                            }
+                            .modifier(OneWayLyricPull(
+                                lineIndex: index,
+                                originIndex: pullOrigin,
+                                initialOffset: pullOffsets[index] ?? 0,
+                                progress: pullProgress
+                            ))
                             .id(index)
                             .accessibilityValue(index == currentIndex ? Text("Current lyric") : Text(""))
 
@@ -314,16 +345,30 @@ struct SyncedLyricsView: View {
                                     playback: playback,
                                     timingOffsetMs: timingOffsetMs
                                 )
+                                .modifier(OneWayLyricPull(
+                                    lineIndex: index,
+                                    originIndex: pullOrigin,
+                                    initialOffset: pullOffsets[index] ?? 0,
+                                    progress: pullProgress
+                                ))
                                 .id(BreathingRowID(lineIndex: index))
                             }
                         }
                     }
                 }
+                .coordinateSpace(name: "lyricScrollContent")
                 .padding(.horizontal, 32)
                 .padding(.top, max(52, viewportHeight * 0.18))
                 .padding(.bottom, max(180, viewportHeight * 0.76))
             }
             .scrollIndicators(followsPlayback ? .hidden : .visible)
+            .onPreferenceChange(LyricRowPositionKey.self) { positions in
+                if let pullStartedAt,
+                   Date().timeIntervalSince(pullStartedAt) < OneWayLyricPull.totalDuration {
+                    return
+                }
+                rowPositions.merge(positions) { _, new in new }
+            }
             .mask {
                 LinearGradient(
                     stops: [
@@ -344,14 +389,61 @@ struct SyncedLyricsView: View {
                     proxy.scrollTo(currentIndex, anchor: lyricFocusAnchor)
                 }
             }
-            .onChange(of: currentIndex) { _, newIndex in
+            .onChange(of: currentIndex) { oldIndex, newIndex in
                 guard followsPlayback, let newIndex else { return }
-                withAnimation(.smooth(duration: 1.18)) {
+                let isManualSeek = pendingManualSeekIndex == newIndex
+                pendingManualSeekIndex = nil
+                if isManualSeek { return }
+                let wasFocusedOnBreather = oldIndex != nil && focusedBreatherIndex == oldIndex
+                focusedBreatherIndex = nil
+                guard !reduceMotion, !wasFocusedOnBreather,
+                      let oldIndex, oldIndex >= 3, newIndex == oldIndex + 1,
+                      let oldY = rowPositions[oldIndex],
+                      let newY = rowPositions[newIndex],
+                      newY > oldY, newY - oldY < viewportHeight * 0.8 else {
+                    pullGeneration += 1
+                    withTransaction(Transaction(animation: nil)) {
+                        pullOffsets = [:]
+                        pullProgress = 1
+                    }
+                    withAnimation(.smooth(duration: 1.18)) {
+                        proxy.scrollTo(newIndex, anchor: lyricFocusAnchor)
+                    }
+                    return
+                }
+
+                let travel = newY - oldY
+                let now = Date()
+                let previousElapsed = pullStartedAt.map { now.timeIntervalSince($0) } ?? .infinity
+                var nextOffsets: [Int: CGFloat] = [:]
+                for index in lines.indices {
+                    let previousDelay = Double(min(7, abs(index - pullOrigin))) * 0.06
+                    let previousOffset = (pullOffsets[index] ?? 0) * OneWayLyricPull.remaining(
+                        elapsed: previousElapsed,
+                        delay: previousDelay
+                    )
+                    nextOffsets[index] = previousOffset + travel
+                }
+
+                pullGeneration += 1
+                let generation = pullGeneration
+                withTransaction(Transaction(animation: nil)) {
+                    pullOffsets = nextOffsets
+                    pullOrigin = newIndex - 3
+                    pullProgress = 0
+                    pullStartedAt = now
                     proxy.scrollTo(newIndex, anchor: lyricFocusAnchor)
+                }
+                DispatchQueue.main.async {
+                    guard pullGeneration == generation else { return }
+                    withAnimation(.linear(duration: OneWayLyricPull.totalDuration)) {
+                        pullProgress = 1
+                    }
                 }
             }
             .onChange(of: activeBreatherIndex) { _, lineIndex in
                 guard followsPlayback, let lineIndex else { return }
+                focusedBreatherIndex = lineIndex
                 withAnimation(.timingCurve(0.22, 0.68, 0.24, 1, duration: 1.10)) {
                     proxy.scrollTo(BreathingRowID(lineIndex: lineIndex), anchor: lyricFocusAnchor)
                 }
@@ -360,6 +452,7 @@ struct SyncedLyricsView: View {
                 switch phase {
                 case .tracking, .interacting:
                     followsPlayback = false
+                    focusedBreatherIndex = nil
                     resumeFollowingTask?.cancel()
                 case .idle:
                     scheduleResume(using: proxy)
@@ -373,6 +466,7 @@ struct SyncedLyricsView: View {
                     Button {
                         resumeFollowingTask?.cancel()
                         followsPlayback = true
+                        focusedBreatherIndex = nil
                         if let currentIndex {
                             withAnimation(.snappy(duration: 0.4)) {
                                 proxy.scrollTo(currentIndex, anchor: lyricFocusAnchor)
@@ -407,6 +501,7 @@ struct SyncedLyricsView: View {
                         activeColor: .white,
                         pendingColor: .white.opacity(0.34)
                     )
+                    .transaction { $0.animation = nil }
                     .transition(.identity)
                 } else if line.words?.isEmpty == false {
                     StaticWordTimedText(line: line, options: options)
@@ -430,11 +525,6 @@ struct SyncedLyricsView: View {
         .foregroundStyle(.white)
         .opacity(opacity(for: index))
         .animation(.easeOut(duration: 0.24), value: opacity(for: index))
-        .modifier(SequentialLyricCatchUp(
-            lineIndex: index,
-            currentIndex: currentIndex,
-            enabled: followsPlayback
-        ))
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
@@ -485,6 +575,7 @@ struct SyncedLyricsView: View {
             try? await Task.sleep(nanoseconds: 4_000_000_000)
             guard !Task.isCancelled else { return }
             followsPlayback = true
+            focusedBreatherIndex = nil
             if let currentIndex {
                 withAnimation(.snappy(duration: 0.45)) {
                     proxy.scrollTo(currentIndex, anchor: lyricFocusAnchor)
@@ -494,62 +585,46 @@ struct SyncedLyricsView: View {
     }
 }
 
-private struct SequentialLyricCatchUp: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+private struct LyricRowPositionKey: PreferenceKey {
+    static var defaultValue: [Int: CGFloat] = [:]
+
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+/// Keeps each row at its previous screen position when the list advances,
+/// then lets the rows follow upward one by one. A critically damped response
+/// only approaches zero, so the rows never reverse direction or bounce.
+private struct OneWayLyricPull: AnimatableModifier {
+    static let totalDuration = 1.65
+    private static let settleDuration = 1.05
 
     let lineIndex: Int
-    let currentIndex: Int?
-    let enabled: Bool
+    let originIndex: Int
+    let initialOffset: CGFloat
+    var progress: CGFloat
 
-    @State private var lagOffset: CGFloat = 0
-    @State private var settleTask: Task<Void, Never>?
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
 
     func body(content: Content) -> some View {
-        content
-            .offset(y: lagOffset)
-            .onChange(of: currentIndex) { oldIndex, newIndex in
-                settleTask?.cancel()
-                guard enabled, !reduceMotion,
-                      let oldIndex, let newIndex, oldIndex != newIndex else {
-                    lagOffset = 0
-                    return
-                }
+        let delay = Double(min(7, abs(lineIndex - originIndex))) * 0.06
+        let offset = initialOffset * Self.remaining(
+            elapsed: Double(progress) * Self.totalDuration,
+            delay: delay
+        )
+        content.offset(y: offset)
+    }
 
-                let direction: CGFloat = newIndex > oldIndex ? 1 : -1
-                let triggerIndex = max(0, newIndex - 3)
-                let distanceFromTrigger = min(7, abs(lineIndex - triggerIndex))
-                let distanceFromCurrent = min(7, abs(lineIndex - newIndex))
-                let arrivalDelay = Double(distanceFromTrigger) * 0.06
-                let riseDuration = 0.28
-                let leadingDelay = 0.06
-
-                // Start the pull three lines above the active lyric, outside
-                // the visible focus area, then pass it down through the rows.
-                // Ease into the peak with zero end velocity before the spring
-                // returns, avoiding a sharp upward change of direction.
-                withAnimation(.easeInOut(duration: riseDuration).delay(leadingDelay + arrivalDelay)) {
-                    lagOffset = direction * (9 + CGFloat(distanceFromCurrent) * 0.7)
-                }
-
-                settleTask = Task { @MainActor in
-                    let settleDelay = leadingDelay + arrivalDelay + riseDuration
-                    try? await Task.sleep(nanoseconds: UInt64(settleDelay * 1_000_000_000))
-                    guard !Task.isCancelled else { return }
-                    withAnimation(.spring(duration: 1.05, bounce: 0)) {
-                        lagOffset = 0
-                    }
-                }
-            }
-            .onChange(of: enabled) { _, isEnabled in
-                if !isEnabled {
-                    settleTask?.cancel()
-                    lagOffset = 0
-                }
-            }
-            .onDisappear {
-                settleTask?.cancel()
-                lagOffset = 0
-            }
+    static func remaining(elapsed: Double, delay: Double) -> CGFloat {
+        let fraction = min(1, max(0, (elapsed - delay) / settleDuration))
+        let frequency = 6.5
+        let tail = (1 + frequency * fraction) * exp(-frequency * fraction)
+        let endTail = (1 + frequency) * exp(-frequency)
+        return CGFloat(max(0, (tail - endTail) / (1 - endTail)))
     }
 }
 
