@@ -77,10 +77,10 @@ struct WordTimedText: View {
     ) -> Double {
         guard index > 0, states[index].fraction < 1 else { return 0 }
         let progress = states[index - 1].fraction
-        let arrival = min(1, max(0, (progress - 0.52) / 0.48))
+        let arrival = min(1, max(0, (progress - 0.76) / 0.24))
         // Keep the preview under the real fill until the whole word is bright.
         // Removing it at the first active frame made the remaining glyph dim.
-        return smoothStep(arrival) * 0.30
+        return smoothStep(arrival) * 0.20
     }
 
     private func smoothStep(_ value: Double) -> Double {
@@ -116,17 +116,23 @@ private struct ProgressiveWordFill: View {
                 Text(text)
                     .foregroundStyle(fraction >= 1 ? completedColor : activeColor)
                     .mask { fillMask }
+                    .opacity(fillOnsetOpacity)
             }
 
             if previewIntensity > 0 {
                 Text(text)
                     .foregroundStyle(activeColor.opacity(previewIntensity))
                     .mask {
-                        LinearGradient(
-                            colors: [.white, .white.opacity(0.42), .clear],
-                            startPoint: layoutDirection == .rightToLeft ? .trailing : .leading,
-                            endPoint: layoutDirection == .rightToLeft ? .leading : .trailing
-                        )
+                        GeometryReader { geometry in
+                            LinearGradient(
+                                colors: [.white, .white.opacity(0.30), .clear],
+                                startPoint: layoutDirection == .rightToLeft ? .trailing : .leading,
+                                endPoint: layoutDirection == .rightToLeft ? .leading : .trailing
+                            )
+                            .frame(width: min(28, geometry.size.width * 0.58))
+                            .frame(maxWidth: .infinity,
+                                   alignment: layoutDirection == .rightToLeft ? .trailing : .leading)
+                        }
                     }
             }
 
@@ -183,8 +189,13 @@ private struct ProgressiveWordFill: View {
             + progress * progress * progress
     }
 
+    private var fillOnsetOpacity: Double {
+        let progress = min(1, max(0, fraction / 0.22))
+        return progress * progress * (3 - 2 * progress)
+    }
+
     private var isLongTail: Bool {
-        isLastWord && durationMs >= 600
+        isLastWord && durationMs >= 1_200
     }
 
     private var tailProgress: Double {

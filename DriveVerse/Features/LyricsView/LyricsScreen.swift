@@ -397,7 +397,7 @@ struct SyncedLyricsView: View {
         let isCurrent = index == currentIndex && activeBreatherIndex == nil
         return VStack(alignment: .leading, spacing: 7) {
             Group {
-                if isCurrent, line.words?.isEmpty == false, let playback {
+                if index == currentIndex, line.words?.isEmpty == false, let playback {
                     WordTimedText(
                         line: line,
                         playback: playback,
@@ -428,11 +428,6 @@ struct SyncedLyricsView: View {
         .blur(radius: blurRadius(for: index))
         .scaleEffect(isCurrent ? 1 : 0.985, anchor: .leading)
         .animation(.timingCurve(0.22, 0.68, 0.24, 1, duration: 0.85), value: currentIndex)
-        .modifier(SequentialLyricCatchUp(
-            lineIndex: index,
-            currentIndex: currentIndex,
-            enabled: followsPlayback
-        ))
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
@@ -495,45 +490,6 @@ struct SyncedLyricsView: View {
                 }
             }
         }
-    }
-}
-
-private struct SequentialLyricCatchUp: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    let lineIndex: Int
-    let currentIndex: Int?
-    let enabled: Bool
-    @State private var lagOffset: CGFloat = 0
-
-    func body(content: Content) -> some View {
-        content
-            .offset(y: lagOffset)
-            .onChange(of: currentIndex) { oldIndex, newIndex in
-                guard enabled, !reduceMotion,
-                      let oldIndex, let newIndex, oldIndex != newIndex else {
-                    lagOffset = 0
-                    return
-                }
-
-                let direction: CGFloat = newIndex > oldIndex ? 1 : -1
-                let distance = min(7, abs(lineIndex - newIndex))
-                lagOffset = direction * (25 + CGFloat(distance) * 2.2)
-
-                // Commit the lag first, then let nearby rows catch the new
-                // scroll position before progressively more distant rows.
-                DispatchQueue.main.async {
-                    withAnimation(
-                        .timingCurve(0.22, 0.68, 0.24, 1, duration: 1.20)
-                            .delay(Double(distance) * 0.085)
-                    ) {
-                        lagOffset = 0
-                    }
-                }
-            }
-            .onChange(of: enabled) { _, isEnabled in
-                if !isEnabled { lagOffset = 0 }
-            }
     }
 }
 
@@ -725,57 +681,60 @@ private struct AlbumPlayerPane: View {
 
 private struct LyricsBackdrop: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var animationOrigin = Date()
     let artworkData: Data?
 
     var body: some View {
         GeometryReader { geometry in
+            let palette = meshColors
             TimelineView(.animation(minimumInterval: 1.0 / 15.0, paused: reduceMotion)) { timeline in
-                let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
-                let driftX = CGFloat(sin(time * 0.11)) * 32
-                let driftY = CGFloat(cos(time * 0.085)) * 25
-                let breathingScale = 1.48 + CGFloat(sin(time * 0.07)) * 0.06
+                let time = reduceMotion ? 0 : timeline.date.timeIntervalSince(animationOrigin)
                 let lightCenter = UnitPoint(
-                    x: 0.57 + CGFloat(sin(time * 0.075)) * 0.25,
-                    y: 0.28 + CGFloat(cos(time * 0.055)) * 0.20
+                    x: 0.55 + CGFloat(sin(time * 0.095)) * 0.22,
+                    y: 0.30 + CGFloat(cos(time * 0.075)) * 0.17
                 )
 
                 ZStack {
-                    LinearGradient(
-                        colors: [Color(red: 0.30, green: 0.12, blue: 0.20), .black],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                    MeshGradient(
+                        width: 4,
+                        height: 4,
+                        points: meshPoints(at: time),
+                        colors: palette,
+                        background: palette[5]
                     )
+                    .blur(radius: 30)
+                    .scaleEffect(1.18)
 #if canImport(UIKit)
                     if let image = ArtworkImageCache.image(from: artworkData) {
+                        // Lyricify's iOS-inspired background combines a moving
+                        // mesh with independently rotating artwork layers.
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .saturation(1.30)
+                            .blur(radius: 72)
+                            .scaleEffect(1.75)
+                            .rotationEffect(.degrees(time * 3.0))
+                            .opacity(0.30)
+
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
                             .frame(width: geometry.size.width, height: geometry.size.height)
                             .saturation(1.45)
-                            .contrast(1.08)
-                            .blur(radius: 62)
-                            .scaleEffect(breathingScale)
-                            .offset(x: driftX, y: driftY)
-                            .opacity(0.90)
-
-                        // A second, slower artwork wash moves independently so
-                        // the colors flow rather than the whole image panning.
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: geometry.size.width, height: geometry.size.height)
-                            .saturation(1.65)
-                            .blur(radius: 94)
-                            .scaleEffect(1.78)
-                            .rotationEffect(.degrees(sin(time * 0.035) * 9))
-                            .offset(x: -driftX * 1.35, y: -driftY * 1.50)
+                            .blur(radius: 100)
+                            .scaleEffect(1.90)
+                            .rotationEffect(.degrees(-time * 4.3))
+                            .offset(x: geometry.size.width * 0.22,
+                                    y: -geometry.size.height * 0.14)
                             .blendMode(.screen)
-                            .opacity(0.28)
+                            .opacity(0.17)
                     }
 #endif
-                    Color.black.opacity(0.30)
+                    Color.black.opacity(0.42)
                     RadialGradient(
-                        colors: [.white.opacity(0.16), .clear],
+                        colors: [.white.opacity(0.10), .clear],
                         center: lightCenter,
                         startRadius: 18,
                         endRadius: max(420, geometry.size.height * 0.72)
@@ -798,7 +757,99 @@ private struct LyricsBackdrop: View {
         .ignoresSafeArea()
         .allowsHitTesting(false)
     }
+
+    private var meshColors: [Color] {
+#if canImport(UIKit)
+        ArtworkMeshPalette.colors(from: artworkData)
+#else
+        Self.fallbackColors
+#endif
+    }
+
+    private func meshPoints(at time: TimeInterval) -> [SIMD2<Float>] {
+        (0..<16).map { index in
+            let column = index % 4
+            let row = index / 4
+            var x = Float(column) / 3
+            var y = Float(row) / 3
+            if column > 0 && column < 3 {
+                x += Float(sin(time * 0.36 + Double(row) * 1.7 + Double(column) * 0.8)) * 0.10
+            }
+            if row > 0 && row < 3 {
+                y += Float(cos(time * 0.31 + Double(column) * 1.5 + Double(row) * 0.9)) * 0.10
+            }
+            return SIMD2(x, y)
+        }
+    }
+
+    fileprivate static let fallbackColors: [Color] = [
+        Color(red: 0.22, green: 0.09, blue: 0.20), Color(red: 0.33, green: 0.12, blue: 0.23),
+        Color(red: 0.15, green: 0.10, blue: 0.28), Color(red: 0.09, green: 0.08, blue: 0.19),
+        Color(red: 0.28, green: 0.10, blue: 0.23), Color(red: 0.43, green: 0.15, blue: 0.25),
+        Color(red: 0.16, green: 0.13, blue: 0.36), Color(red: 0.11, green: 0.12, blue: 0.29),
+        Color(red: 0.25, green: 0.12, blue: 0.28), Color(red: 0.35, green: 0.15, blue: 0.34),
+        Color(red: 0.13, green: 0.13, blue: 0.31), Color(red: 0.08, green: 0.09, blue: 0.21),
+        Color(red: 0.14, green: 0.08, blue: 0.19), Color(red: 0.24, green: 0.11, blue: 0.25),
+        Color(red: 0.10, green: 0.10, blue: 0.22), Color(red: 0.06, green: 0.07, blue: 0.16)
+    ]
 }
+
+#if canImport(UIKit)
+private final class ArtworkMeshColors: NSObject {
+    let values: [Color]
+
+    init(_ values: [Color]) {
+        self.values = values
+    }
+}
+
+private enum ArtworkMeshPalette {
+    private static let cache: NSCache<NSData, ArtworkMeshColors> = {
+        let cache = NSCache<NSData, ArtworkMeshColors>()
+        cache.countLimit = 8
+        return cache
+    }()
+
+    static func colors(from data: Data?) -> [Color] {
+        guard let data else { return LyricsBackdrop.fallbackColors }
+        let key = data as NSData
+        if let cached = cache.object(forKey: key) { return cached.values }
+        guard let image = ArtworkImageCache.image(from: data)?.cgImage else {
+            return LyricsBackdrop.fallbackColors
+        }
+
+        let side = 4
+        var pixels = [UInt8](repeating: 0, count: side * side * 4)
+        let drew = pixels.withUnsafeMutableBytes { bytes -> Bool in
+            guard let context = CGContext(
+                data: bytes.baseAddress,
+                width: side,
+                height: side,
+                bitsPerComponent: 8,
+                bytesPerRow: side * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue
+                    | CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.interpolationQuality = .high
+            context.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
+            return true
+        }
+        guard drew else { return LyricsBackdrop.fallbackColors }
+
+        let colors = (0..<(side * side)).map { index -> Color in
+            let offset = index * 4
+            return Color(
+                red: min(1, Double(pixels[offset]) / 255 * 1.18 + 0.025),
+                green: min(1, Double(pixels[offset + 1]) / 255 * 1.18 + 0.025),
+                blue: min(1, Double(pixels[offset + 2]) / 255 * 1.18 + 0.025)
+            )
+        }
+        cache.setObject(ArtworkMeshColors(colors), forKey: key)
+        return colors
+    }
+}
+#endif
 
 // MARK: - Display controls
 

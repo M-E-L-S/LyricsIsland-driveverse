@@ -10,3 +10,14 @@ A local copy of that license is included at `LICENSES/Apache-2.0.txt`.
 
 DriveVerse's Swift implementation is adapted for its provider-neutral data
 model and lazy search pipeline; it does not embed the original .NET project.
+
+## Lyricify Backgrounds
+
+The artwork-derived mesh, blurred layers, and independent rotation in the
+full-screen lyrics background were informed by
+[WXRIW/Lyricify-Backgrounds](https://github.com/WXRIW/Lyricify-Backgrounds),
+Copyright its contributors, licensed under the
+[Apache License 2.0](https://github.com/WXRIW/Lyricify-Backgrounds/blob/master/LICENSE.txt).
+DriveVerse uses a native SwiftUI implementation and does not embed its Windows
+renderer or shaders. The Apache license text is included at
+`LICENSES/Apache-2.0.txt`.
