@@ -346,7 +346,7 @@ struct SyncedLyricsView: View {
             }
             .onChange(of: currentIndex) { _, newIndex in
                 guard followsPlayback, let newIndex else { return }
-                withAnimation(.timingCurve(0.22, 0.68, 0.24, 1, duration: 1.35)) {
+                withAnimation(.timingCurve(0.22, 0.68, 0.24, 1, duration: 1.55)) {
                     proxy.scrollTo(newIndex, anchor: lyricFocusAnchor)
                 }
             }
@@ -407,8 +407,10 @@ struct SyncedLyricsView: View {
                         activeColor: .white,
                         pendingColor: .white.opacity(0.34)
                     )
+                    .transition(.identity)
                 } else if line.words?.isEmpty == false {
                     StaticWordTimedText(line: line, options: options)
+                        .transition(.identity)
                 } else {
                     Text(LyricsTextRenderer.primary(for: line, options: options))
                 }
@@ -427,12 +429,11 @@ struct SyncedLyricsView: View {
         }
         .foregroundStyle(.white)
         .opacity(opacity(for: index))
-        .blur(radius: blurRadius(for: index))
-        .animation(.timingCurve(0.22, 0.68, 0.24, 1, duration: 0.85), value: currentIndex)
+        .animation(.easeOut(duration: 0.24), value: opacity(for: index))
         .offset(y: layeredLift(for: index))
         .animation(
-            .timingCurve(0.22, 0.68, 0.24, 1, duration: 1.15)
-                .delay(Double(min(4, max(0, (currentIndex ?? index) - index))) * 0.07),
+            .timingCurve(0.22, 0.68, 0.24, 1, duration: 0.90)
+                .delay(Double(min(3, abs(index - (currentIndex ?? index)))) * 0.22),
             value: currentIndex
         )
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -443,20 +444,14 @@ struct SyncedLyricsView: View {
         guard let currentIndex else { return 0.40 }
         if index == currentIndex { return activeBreatherIndex == index ? 0.22 : 1 }
         if !followsPlayback { return 0.34 }
-        return abs(index - currentIndex) == 1 ? 0.25 : 0.14
-    }
-
-    private func blurRadius(for index: Int) -> CGFloat {
-        guard followsPlayback, let currentIndex else { return 0 }
-        if index == currentIndex { return activeBreatherIndex == index ? 1.2 : 0 }
-        return abs(index - currentIndex) == 1 ? 1.2 : 2.4
+        return abs(index - currentIndex) == 1 ? 0.32 : 0.18
     }
 
     private func layeredLift(for index: Int) -> CGFloat {
         guard let currentIndex else { return 0 }
-        // Each newly sung row joins the rows above it in a one-way lift.
-        // Forward playback never sets a downward starting offset.
-        return -CGFloat(min(4, max(0, currentIndex - index + 1))) * 7
+        // The active row moves first, then the two rows above it. A lasting
+        // upward step avoids any snap-back or overlapping text at the end.
+        return -CGFloat(min(3, max(0, currentIndex - index + 1))) * 18
     }
 
     private var lyricFocusAnchor: UnitPoint {
