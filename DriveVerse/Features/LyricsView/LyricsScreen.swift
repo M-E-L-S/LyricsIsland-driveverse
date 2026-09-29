@@ -346,7 +346,7 @@ struct SyncedLyricsView: View {
             }
             .onChange(of: currentIndex) { _, newIndex in
                 guard followsPlayback, let newIndex else { return }
-                withAnimation(.timingCurve(0.22, 0.68, 0.24, 1, duration: 1.55)) {
+                withAnimation(.smooth(duration: 0.95)) {
                     proxy.scrollTo(newIndex, anchor: lyricFocusAnchor)
                 }
             }
@@ -430,12 +430,11 @@ struct SyncedLyricsView: View {
         .foregroundStyle(.white)
         .opacity(opacity(for: index))
         .animation(.easeOut(duration: 0.24), value: opacity(for: index))
-        .offset(y: layeredLift(for: index))
-        .animation(
-            .timingCurve(0.22, 0.68, 0.24, 1, duration: 0.90)
-                .delay(Double(min(3, abs(index - (currentIndex ?? index)))) * 0.22),
-            value: currentIndex
-        )
+        .modifier(SequentialLyricCatchUp(
+            lineIndex: index,
+            currentIndex: currentIndex,
+            enabled: followsPlayback
+        ))
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
@@ -445,13 +444,6 @@ struct SyncedLyricsView: View {
         if index == currentIndex { return activeBreatherIndex == index ? 0.22 : 1 }
         if !followsPlayback { return 0.34 }
         return abs(index - currentIndex) == 1 ? 0.32 : 0.18
-    }
-
-    private func layeredLift(for index: Int) -> CGFloat {
-        guard let currentIndex else { return 0 }
-        // The active row moves first, then the two rows above it. A lasting
-        // upward step avoids any snap-back or overlapping text at the end.
-        return -CGFloat(min(3, max(0, currentIndex - index + 1))) * 18
     }
 
     private var lyricFocusAnchor: UnitPoint {
@@ -499,6 +491,60 @@ struct SyncedLyricsView: View {
                 }
             }
         }
+    }
+}
+
+private struct SequentialLyricCatchUp: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let lineIndex: Int
+    let currentIndex: Int?
+    let enabled: Bool
+
+    @State private var lagOffset: CGFloat = 0
+    @State private var settleTask: Task<Void, Never>?
+
+    func body(content: Content) -> some View {
+        content
+            .offset(y: lagOffset)
+            .onChange(of: currentIndex) { oldIndex, newIndex in
+                settleTask?.cancel()
+                guard enabled, !reduceMotion,
+                      let oldIndex, let newIndex, oldIndex != newIndex else {
+                    lagOffset = 0
+                    return
+                }
+
+                let direction: CGFloat = newIndex > oldIndex ? 1 : -1
+                let distance = min(7, abs(lineIndex - newIndex))
+
+                // Let the scroll begin first. Ease the small catch-up offset in
+                // from zero so a row never jumps downward on the first frame.
+                withAnimation(.easeIn(duration: 0.18).delay(0.06)) {
+                    lagOffset = direction * (9 + CGFloat(distance) * 0.7)
+                }
+
+                settleTask = Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 240_000_000)
+                    guard !Task.isCancelled else { return }
+                    withAnimation(
+                        .spring(duration: 0.48, bounce: 0.06)
+                            .delay(Double(distance) * 0.045)
+                    ) {
+                        lagOffset = 0
+                    }
+                }
+            }
+            .onChange(of: enabled) { _, isEnabled in
+                if !isEnabled {
+                    settleTask?.cancel()
+                    lagOffset = 0
+                }
+            }
+            .onDisappear {
+                settleTask?.cancel()
+                lagOffset = 0
+            }
     }
 }
 
