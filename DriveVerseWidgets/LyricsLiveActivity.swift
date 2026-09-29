@@ -89,7 +89,9 @@ struct LockScreenLyricsView: View {
                 .font(.title3.bold())
                 .lineLimit(2)
                 .minimumScaleFactor(0.7)
-                .contentTransition(.opacity)
+                .id(context.state.marqueeIdentity)
+                .transition(.opacity)
+                .animation(.smooth(duration: 0.5), value: context.state.marqueeIdentity)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(context.state.secondaryLine.isEmpty
@@ -102,9 +104,9 @@ struct LockScreenLyricsView: View {
                     ? context.state.nextLine
                     : context.state.secondaryLine)
                 .transition(.push(from: .bottom))
+                .animation(.smooth(duration: 0.5), value: context.state.visibleLyricsIdentity)
         }
         .padding(10)
-        .animation(.smooth(duration: 0.5), value: context.state.visibleLyricsIdentity)
     }
 
     private var mediumBody: some View {
@@ -122,6 +124,8 @@ struct LockScreenLyricsView: View {
                 .font(.title3.bold())
                 .lineLimit(2)
                 .minimumScaleFactor(0.75)
+                .id(context.state.marqueeIdentity)
+                .transition(.blurReplace)
 
             Text(context.state.secondaryLine.isEmpty
                  ? context.state.nextLine
@@ -177,12 +181,16 @@ private struct LiveWordText: View {
             if state.usesWordTiming {
                 TimelineView(.animation(minimumInterval: 1.0 / 30.0,
                                         paused: !state.isPlaying)) { timeline in
+                    // Word updates change Text content, but the reveal itself
+                    // must not inherit ActivityKit's default blur/crossfade.
                     wordText(at: timeline.date)
+                        .contentTransition(.identity)
                 }
             } else {
-                Text(state.completedText).foregroundColor(.primary)
+                (Text(state.completedText).foregroundColor(.primary)
                 + Text(state.activeText).foregroundColor(.accentColor)
-                + Text(state.remainingText).foregroundColor(.secondary.opacity(0.55))
+                + Text(state.remainingText).foregroundColor(.secondary.opacity(0.55)))
+                    .contentTransition(.identity)
             }
         }
     }
