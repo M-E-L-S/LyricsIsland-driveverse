@@ -258,6 +258,8 @@ final class LiveActivityController {
                 secondaryLine: "", nextLine: "",
                 completedText: "", activeText: String(localized: "♪ Waiting for music…"),
                 remainingText: "",
+                lyricPositionMs: 0, positionDate: Date(),
+                activeWordStartMs: 0, activeWordEndMs: 0,
                 lineIndex: nil, usesWordTiming: false, lineMarqueeAtEnd: false,
                 lineMarqueeDurationMs: 0,
                 isPlaying: false
@@ -421,6 +423,10 @@ final class LiveActivityController {
             completedText: segments.completed,
             activeText: segments.active,
             remainingText: segments.remaining,
+            lyricPositionMs: position?.lyricPositionMs ?? 0,
+            positionDate: Date(),
+            activeWordStartMs: segments.startMs,
+            activeWordEndMs: segments.endMs,
             lineIndex: position?.lineIndex,
             usesWordTiming: segments.usesWordTiming,
             lineMarqueeAtEnd: lineMarqueeAtEnd,
@@ -433,19 +439,21 @@ final class LiveActivityController {
         position: LyricsPosition?,
         fallback: String,
         enabled: Bool
-    ) -> (completed: String, active: String, remaining: String, usesWordTiming: Bool) {
-        guard enabled else { return (fallback, "", "", false) }
+    ) -> (completed: String, active: String, remaining: String,
+          usesWordTiming: Bool, startMs: Int, endMs: Int) {
+        guard enabled else { return (fallback, "", "", false, 0, 0) }
         guard let words = position?.currentWords, !words.isEmpty,
               let index = position?.currentWordIndex, words.indices.contains(index) else {
-            return ("", fallback, "", false)
+            return ("", fallback, "", false, 0, 0)
         }
         guard words.reduce(0, { $0 + $1.original.count }) <= 100 else {
-            return ("", fallback, "", false)
+            return ("", fallback, "", false, 0, 0)
         }
         let completed = words[..<index].map(\.original).joined()
         let active = words[index].original
         let remaining = words[(index + 1)...].map(\.original).joined()
-        return (completed, active, remaining, true)
+        return (completed, active, remaining, true,
+                words[index].startTimeMs, words[index].endTimeMs)
     }
 }
 #endif

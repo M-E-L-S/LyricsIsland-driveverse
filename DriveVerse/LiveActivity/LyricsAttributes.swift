@@ -22,6 +22,12 @@ struct LyricsAttributes: ActivityAttributes {
         var completedText: String
         var activeText: String
         var remainingText: String
+        /// Anchor the active word to playback time so the lock screen can
+        /// reveal its glyphs without sending an Activity update per frame.
+        var lyricPositionMs: Int
+        var positionDate: Date
+        var activeWordStartMs: Int
+        var activeWordEndMs: Int
         /// Compact-island marquee metadata. The line index restarts a
         /// one-shot animation even when two adjacent lyric lines are equal.
         var lineIndex: Int?
@@ -43,6 +49,10 @@ struct LyricsAttributes: ActivityAttributes {
             case completedText = "d"
             case activeText = "v"
             case remainingText = "m"
+            case lyricPositionMs = "p"
+            case positionDate = "q"
+            case activeWordStartMs = "b"
+            case activeWordEndMs = "f"
             case lineIndex = "l"
             case usesWordTiming = "w"
             case lineMarqueeAtEnd = "e"

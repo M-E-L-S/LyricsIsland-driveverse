@@ -166,15 +166,60 @@ private struct ActivityArtwork: View {
     }
 }
 
-/// ActivityKit does not reliably advance TimelineView while the app is in the
-/// background. The app therefore sends these tiny segments on word changes.
+/// ActivityKit does not reliably advance TimelineView in the background. Word
+/// updates still supply the current segment; the playback anchor lets frames
+/// rendered between updates reveal that word from its leading edge.
 private struct LiveWordText: View {
     let state: LyricsAttributes.ContentState
 
     var body: some View {
-        Text(state.completedText).foregroundColor(.primary)
-        + Text(state.activeText).foregroundColor(.accentColor)
-        + Text(state.remainingText).foregroundColor(.secondary.opacity(0.55))
+        Group {
+            if state.usesWordTiming {
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0,
+                                        paused: !state.isPlaying)) { timeline in
+                    wordText(at: timeline.date)
+                }
+            } else {
+                Text(state.completedText).foregroundColor(.primary)
+                + Text(state.activeText).foregroundColor(.accentColor)
+                + Text(state.remainingText).foregroundColor(.secondary.opacity(0.55))
+            }
+        }
+    }
+
+    private func wordText(at date: Date) -> Text {
+        let elapsedMs = state.isPlaying
+            ? Int(date.timeIntervalSince(state.positionDate) * 1_000) : 0
+        let positionMs = state.lyricPositionMs + elapsedMs
+        let durationMs = max(1, state.activeWordEndMs - state.activeWordStartMs)
+        let fraction = min(1, max(0, Double(positionMs - state.activeWordStartMs)
+            / Double(durationMs)))
+        let pending = Color.secondary.opacity(0.55)
+
+        // A gradient on just the active Text keeps SwiftUI's existing line
+        // breaking while giving the current word a soft leading-edge fill.
+        let active: Text
+        if fraction <= 0 {
+            active = Text(state.activeText).foregroundStyle(pending)
+        } else if fraction >= 1 {
+            active = Text(state.activeText).foregroundStyle(Color.primary)
+        } else {
+            let feather = 0.08
+            active = Text(state.activeText).foregroundStyle(LinearGradient(
+                stops: [
+                    .init(color: .primary, location: 0),
+                    .init(color: .primary, location: max(0, fraction - feather)),
+                    .init(color: pending, location: min(1, fraction + feather)),
+                    .init(color: pending, location: 1)
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            ))
+        }
+
+        return Text(state.completedText).foregroundStyle(Color.primary)
+            + active
+            + Text(state.remainingText).foregroundStyle(pending)
     }
 }
 
