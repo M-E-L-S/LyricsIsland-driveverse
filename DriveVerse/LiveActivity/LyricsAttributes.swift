@@ -28,6 +28,10 @@ struct LyricsAttributes: ActivityAttributes {
         var positionDate: Date
         var activeWordStartMs: Int
         var activeWordEndMs: Int
+        /// Target position in the full line, measured in displayed characters.
+        /// WidgetKit interpolates this value during a content update.
+        var fillTarget: Double
+        var fillAnimationDurationMs: Int
         /// Compact-island marquee metadata. The line index restarts a
         /// one-shot animation even when two adjacent lyric lines are equal.
         var lineIndex: Int?
@@ -53,6 +57,8 @@ struct LyricsAttributes: ActivityAttributes {
             case positionDate = "q"
             case activeWordStartMs = "b"
             case activeWordEndMs = "f"
+            case fillTarget = "g"
+            case fillAnimationDurationMs = "h"
             case lineIndex = "l"
             case usesWordTiming = "w"
             case lineMarqueeAtEnd = "e"

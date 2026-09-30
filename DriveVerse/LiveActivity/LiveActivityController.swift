@@ -22,6 +22,8 @@ final class LiveActivityController {
     /// this interval; the newest lyric state always lands, at worst this late.
     /// Track changes and play/pause flips always send immediately.
     static let minUpdateInterval: TimeInterval = 0.20
+    private static let maxWordFillPhaseMs = 1_800
+    private static let wordFillKickoffDelay: TimeInterval = 0.20
 
     private static let log = Logger(subsystem: "io.github.mels.driveverse", category: "activity")
 
@@ -32,6 +34,7 @@ final class LiveActivityController {
     private var stateWatcher: Task<Void, Never>?
     private var pendingTask: Task<Void, Never>?
     private var lineMarqueeTask: Task<Void, Never>?
+    private var wordFillTask: Task<Void, Never>?
     private var pendingContent: LyricsAttributes.ContentState?
     private var latestContent: LyricsAttributes.ContentState?
     private var lastSentTrackKey: String?
@@ -68,6 +71,7 @@ final class LiveActivityController {
         lastSentAt = nil
         cancelPendingUpdate()
         cancelLineMarquee()
+        cancelWordFill()
         lineMarqueeAtEnd = false
         lineMarqueeDelay = 0.5
         lineMarqueeDuration = 1.8
@@ -144,10 +148,15 @@ final class LiveActivityController {
         )
         guard seekedWithinLine || policyWantsUpdate else { return }
 
+        let startsWordFill = state.isPlaying && wordUpdatesEnabled
+            && (startsLineMarquee || seekedWithinLine
+                || latestContent?.usesWordTiming != true)
         let critical = trackChanged
             || state.isPlaying != lastSentIsPlaying
             || lineChanged
             || seekedWithinLine
+            || startsWordFill
+        cancelWordFill()
         lastSentTrackKey = key
         lastSentLineIndex = position?.lineIndex
         lastSentIsPlaying = state.isPlaying
@@ -157,6 +166,7 @@ final class LiveActivityController {
             state: state,
             position: position,
             wordUpdatesEnabled: wordUpdatesEnabled,
+            fillStartsAtCurrentPosition: startsWordFill,
             lineMarqueeAtEnd: lineMarqueeAtEnd,
             lineMarqueeDuration: lineMarqueeDuration
         )
@@ -177,6 +187,16 @@ final class LiveActivityController {
                 expectedTrackKey: key,
                 expectedLineIndex: position?.lineIndex,
                 delay: lineMarqueeDelay,
+                on: activity
+            )
+        }
+        if content.usesWordTiming && state.isPlaying,
+           content.fillTarget < Double(content.completedText.count + content.activeText.count) {
+            scheduleWordFill(
+                expectedTrackKey: key,
+                expectedLineIndex: position?.lineIndex,
+                delay: startsWordFill ? Self.wordFillKickoffDelay
+                    : Double(content.fillAnimationDurationMs) / 1_000,
                 on: activity
             )
         }
@@ -232,6 +252,64 @@ final class LiveActivityController {
         lineMarqueeTask = nil
     }
 
+    /// Advance the target only when the current animation phase is over. The
+    /// system interpolates each phase; no widget-local timer is needed.
+    private func scheduleWordFill(
+        expectedTrackKey: String,
+        expectedLineIndex: Int?,
+        delay: TimeInterval,
+        on activity: Activity<LyricsAttributes>
+    ) {
+        guard delay > 0, let expectedStartMs = latestContent?.activeWordStartMs else { return }
+        wordFillTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self,
+                  self.activity?.id == activity.id,
+                  self.lastSentTrackKey == expectedTrackKey,
+                  self.lastSentLineIndex == expectedLineIndex,
+                  var content = self.latestContent,
+                  content.usesWordTiming, content.isPlaying,
+                  content.activeWordStartMs == expectedStartMs else { return }
+
+            let now = Date()
+            let elapsedMs = Int(now.timeIntervalSince(content.positionDate) * 1_000)
+            let positionMs = content.lyricPositionMs + elapsedMs
+            let phaseMs = min(Self.maxWordFillPhaseMs,
+                              max(0, content.activeWordEndMs - positionMs))
+            content.lyricPositionMs = positionMs
+            content.positionDate = now
+            content.fillTarget = Self.wordFillTarget(
+                completedCount: content.completedText.count,
+                activeCount: content.activeText.count,
+                positionMs: positionMs + phaseMs,
+                startMs: content.activeWordStartMs,
+                endMs: content.activeWordEndMs
+            )
+            content.fillAnimationDurationMs = phaseMs
+            self.latestContent = content
+            self.wordFillTask = nil
+            self.throttle.noteSent(now: now)
+            await activity.update(ActivityContent(state: content, staleDate: nil))
+
+            if phaseMs > 0,
+               content.fillTarget < Double(content.completedText.count + content.activeText.count),
+               self.latestContent?.activeWordStartMs == expectedStartMs,
+               self.latestContent?.isPlaying == true {
+                self.scheduleWordFill(
+                    expectedTrackKey: expectedTrackKey,
+                    expectedLineIndex: expectedLineIndex,
+                    delay: Double(phaseMs) / 1_000,
+                    on: activity
+                )
+            }
+        }
+    }
+
+    private func cancelWordFill() {
+        wordFillTask?.cancel()
+        wordFillTask = nil
+    }
+
     /// Requests the session's activity. Reached two ways: from sync() once a
     /// lyric-bearing track plays in the foreground, or from the Start Drive
     /// Mode intent — the one background context iOS grants Activity.request
@@ -248,6 +326,7 @@ final class LiveActivityController {
                 state: $0,
                 position: position,
                 wordUpdatesEnabled: wordUpdatesEnabled,
+                fillStartsAtCurrentPosition: true,
                 lineMarqueeAtEnd: false,
                 lineMarqueeDuration: lineMarqueeDuration
             )
@@ -260,6 +339,7 @@ final class LiveActivityController {
                 remainingText: "",
                 lyricPositionMs: 0, positionDate: Date(),
                 activeWordStartMs: 0, activeWordEndMs: 0,
+                fillTarget: 0, fillAnimationDurationMs: 0,
                 lineIndex: nil, usesWordTiming: false, lineMarqueeAtEnd: false,
                 lineMarqueeDurationMs: 0,
                 isPlaying: false
@@ -290,6 +370,15 @@ final class LiveActivityController {
                         expectedTrackKey: Self.key(for: state),
                         expectedLineIndex: position?.lineIndex,
                         delay: lineMarqueeDelay,
+                        on: requested
+                    )
+                }
+                if content.usesWordTiming && state.isPlaying,
+                   content.fillTarget < Double(content.completedText.count + content.activeText.count) {
+                    scheduleWordFill(
+                        expectedTrackKey: Self.key(for: state),
+                        expectedLineIndex: position?.lineIndex,
+                        delay: Self.wordFillKickoffDelay,
                         on: requested
                     )
                 }
@@ -327,6 +416,7 @@ final class LiveActivityController {
                     self.latestContent = nil
                     self.cancelPendingUpdate()
                     self.cancelLineMarquee()
+                    self.cancelWordFill()
                     Self.log.warning("activity ended outside the app — background restart impossible; reopen the app or rerun the CarPlay automation")
                 }
             }
@@ -340,6 +430,7 @@ final class LiveActivityController {
         stateWatcher = nil
         cancelPendingUpdate()
         cancelLineMarquee()
+        cancelWordFill()
         guard let activity else { return }
         self.activity = nil
         policy.reset()
@@ -405,6 +496,7 @@ final class LiveActivityController {
         state: NowPlayingState,
         position: LyricsPosition?,
         wordUpdatesEnabled: Bool,
+        fillStartsAtCurrentPosition: Bool,
         lineMarqueeAtEnd: Bool,
         lineMarqueeDuration: TimeInterval
     ) -> LyricsAttributes.ContentState {
@@ -414,6 +506,18 @@ final class LiveActivityController {
             fallback: line,
             enabled: wordUpdatesEnabled
         )
+        let lyricPositionMs = position?.lyricPositionMs ?? 0
+        let phaseMs = segments.usesWordTiming && state.isPlaying
+            && !fillStartsAtCurrentPosition
+            ? min(maxWordFillPhaseMs, max(0, segments.endMs - lyricPositionMs)) : 0
+        let fillTarget = segments.usesWordTiming
+            ? wordFillTarget(
+                completedCount: segments.completed.count,
+                activeCount: segments.active.count,
+                positionMs: lyricPositionMs + phaseMs,
+                startMs: segments.startMs,
+                endMs: segments.endMs
+            ) : 0
         return LyricsAttributes.ContentState(
             title: String(state.title.prefix(48)),
             artist: String(state.artist.prefix(48)),
@@ -423,16 +527,31 @@ final class LiveActivityController {
             completedText: segments.completed,
             activeText: segments.active,
             remainingText: segments.remaining,
-            lyricPositionMs: position?.lyricPositionMs ?? 0,
+            lyricPositionMs: lyricPositionMs,
             positionDate: Date(),
             activeWordStartMs: segments.startMs,
             activeWordEndMs: segments.endMs,
+            fillTarget: fillTarget,
+            fillAnimationDurationMs: phaseMs,
             lineIndex: position?.lineIndex,
             usesWordTiming: segments.usesWordTiming,
             lineMarqueeAtEnd: lineMarqueeAtEnd,
             lineMarqueeDurationMs: Int((lineMarqueeDuration * 1_000).rounded()),
             isPlaying: state.isPlaying
         )
+    }
+
+    private static func wordFillTarget(
+        completedCount: Int,
+        activeCount: Int,
+        positionMs: Int,
+        startMs: Int,
+        endMs: Int
+    ) -> Double {
+        let durationMs = max(1, endMs - startMs)
+        let fraction = min(1, max(0,
+            Double(positionMs - startMs) / Double(durationMs)))
+        return Double(completedCount) + Double(activeCount) * fraction
     }
 
     private static func wordSegments(

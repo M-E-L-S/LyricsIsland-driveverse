@@ -86,6 +86,7 @@ struct LockScreenLyricsView: View {
     private var smallBody: some View {
         VStack(alignment: .leading, spacing: 4) {
             LiveWordText(state: context.state)
+                .animation(context.state.wordFillAnimation, value: context.state.fillTarget)
                 .font(.title3.bold())
                 .lineLimit(2)
                 .minimumScaleFactor(0.7)
@@ -121,6 +122,7 @@ struct LockScreenLyricsView: View {
             .foregroundStyle(.secondary)
 
             LiveWordText(state: context.state)
+                .animation(context.state.wordFillAnimation, value: context.state.fillTarget)
                 .font(.title3.bold())
                 .lineLimit(2)
                 .minimumScaleFactor(0.75)
@@ -170,22 +172,28 @@ private struct ActivityArtwork: View {
     }
 }
 
-/// ActivityKit does not reliably advance TimelineView in the background. Word
-/// updates still supply the current segment; the playback anchor lets frames
-/// rendered between updates reveal that word from its leading edge.
-private struct LiveWordText: View {
+/// The full-line progress is animatable, so ActivityKit can render the reveal
+/// between content updates without relying on a widget-local display clock.
+private struct LiveWordText: View, Animatable {
     let state: LyricsAttributes.ContentState
+    var fillProgress: Double
+
+    init(state: LyricsAttributes.ContentState) {
+        self.state = state
+        fillProgress = state.fillTarget
+    }
+
+    var animatableData: Double {
+        get { fillProgress }
+        set { fillProgress = newValue }
+    }
 
     var body: some View {
         Group {
             if state.usesWordTiming {
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0,
-                                        paused: !state.isPlaying)) { timeline in
-                    // Word updates change Text content, but the reveal itself
-                    // must not inherit ActivityKit's default blur/crossfade.
-                    wordText(at: timeline.date)
-                        .contentTransition(.identity)
-                }
+                // Word updates change Text content, but the reveal itself
+                // must not inherit ActivityKit's default blur/crossfade.
+                wordText.contentTransition(.identity)
             } else {
                 (Text(state.completedText).foregroundColor(.primary)
                 + Text(state.activeText).foregroundColor(.accentColor)
@@ -195,13 +203,10 @@ private struct LiveWordText: View {
         }
     }
 
-    private func wordText(at date: Date) -> Text {
-        let elapsedMs = state.isPlaying
-            ? Int(date.timeIntervalSince(state.positionDate) * 1_000) : 0
-        let positionMs = state.lyricPositionMs + elapsedMs
-        let durationMs = max(1, state.activeWordEndMs - state.activeWordStartMs)
-        let fraction = min(1, max(0, Double(positionMs - state.activeWordStartMs)
-            / Double(durationMs)))
+    private var wordText: Text {
+        let activeLength = max(1, state.activeText.count)
+        let fraction = min(1, max(0,
+            (fillProgress - Double(state.completedText.count)) / Double(activeLength)))
         let pending = Color.secondary.opacity(0.55)
 
         // A gradient on just the active Text keeps SwiftUI's existing line
@@ -311,6 +316,11 @@ private struct CompactMarqueeLine: View {
 }
 
 private extension LyricsAttributes.ContentState {
+    var wordFillAnimation: Animation? {
+        guard isPlaying, usesWordTiming, fillAnimationDurationMs > 0 else { return nil }
+        return .linear(duration: min(2, Double(fillAnimationDurationMs) / 1_000))
+    }
+
     var fullLine: String {
         completedText + activeText + remainingText
     }
