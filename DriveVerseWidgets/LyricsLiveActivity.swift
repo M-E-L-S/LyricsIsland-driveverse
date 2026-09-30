@@ -85,14 +85,10 @@ struct LockScreenLyricsView: View {
     /// lyric IS the content. Two rows, high contrast.
     private var smallBody: some View {
         VStack(alignment: .leading, spacing: 4) {
-            LiveWordText(state: context.state)
-                .animation(context.state.wordFillAnimation, value: context.state.fillTarget)
+            LiveWordText(state: context.state, minimumScale: 0.7)
                 .font(.title3.bold())
                 .lineLimit(2)
                 .minimumScaleFactor(0.7)
-                .id(context.state.marqueeIdentity)
-                .transition(.opacity)
-                .animation(.smooth(duration: 0.5), value: context.state.marqueeIdentity)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(context.state.secondaryLine.isEmpty
@@ -101,11 +97,7 @@ struct LockScreenLyricsView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .id(context.state.secondaryLine.isEmpty
-                    ? context.state.nextLine
-                    : context.state.secondaryLine)
-                .transition(.push(from: .bottom))
-                .animation(.smooth(duration: 0.5), value: context.state.visibleLyricsIdentity)
+                .contentTransition(.opacity)
         }
         .padding(10)
     }
@@ -121,13 +113,10 @@ struct LockScreenLyricsView: View {
             }
             .foregroundStyle(.secondary)
 
-            LiveWordText(state: context.state)
-                .animation(context.state.wordFillAnimation, value: context.state.fillTarget)
+            LiveWordText(state: context.state, minimumScale: 0.75)
                 .font(.title3.bold())
                 .lineLimit(2)
                 .minimumScaleFactor(0.75)
-                .id(context.state.marqueeIdentity)
-                .transition(.blurReplace)
 
             Text(context.state.secondaryLine.isEmpty
                  ? context.state.nextLine
@@ -135,6 +124,7 @@ struct LockScreenLyricsView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .contentTransition(.opacity)
 
         }
         .padding(10)
@@ -172,67 +162,89 @@ private struct ActivityArtwork: View {
     }
 }
 
-/// The full-line progress is animatable, so ActivityKit can render the reveal
-/// between content updates without relying on a widget-local display clock.
-private struct LiveWordText: View, Animatable {
+/// Keep both text layers unchanged throughout a line. Only the built-in offset
+/// of the gradient mask animates in the system's archived view representation.
+private struct LiveWordText: View {
     let state: LyricsAttributes.ContentState
-    var fillProgress: Double
-
-    init(state: LyricsAttributes.ContentState) {
-        self.state = state
-        fillProgress = state.fillTarget
-    }
-
-    var animatableData: Double {
-        get { fillProgress }
-        set { fillProgress = newValue }
-    }
+    let minimumScale: CGFloat
+    @Environment(\.layoutDirection) private var layoutDirection
 
     var body: some View {
-        Group {
-            if state.usesWordTiming {
-                // Word updates change Text content, but the reveal itself
-                // must not inherit ActivityKit's default blur/crossfade.
-                wordText.contentTransition(.identity)
-            } else {
-                (Text(state.completedText).foregroundColor(.primary)
-                + Text(state.activeText).foregroundColor(.accentColor)
-                + Text(state.remainingText).foregroundColor(.secondary.opacity(0.55)))
-                    .contentTransition(.identity)
+        Text(state.fullLine)
+            .foregroundStyle(baseColor)
+            .contentTransition(.opacity)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .topLeading) {
+                Text(state.fullLine)
+                    .foregroundStyle(.primary)
+                    .contentTransition(.opacity)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .mask { fillMask }
+                    .opacity(state.usesWordTiming ? 1 : 0)
+                    .accessibilityHidden(true)
             }
-        }
     }
 
-    private var wordText: Text {
-        let activeLength = max(1, state.activeText.count)
-        let fraction = min(1, max(0,
-            (fillProgress - Double(state.completedText.count)) / Double(activeLength)))
-        let pending = Color.secondary.opacity(0.55)
+    private var baseColor: Color {
+        if state.usesWordTiming { return .secondary.opacity(0.55) }
+        return state.completedText.isEmpty ? .accentColor : .primary
+    }
 
-        // A gradient on just the active Text keeps SwiftUI's existing line
-        // breaking while giving the current word a soft leading-edge fill.
-        let active: Text
-        if fraction <= 0 {
-            active = Text(state.activeText).foregroundStyle(pending)
-        } else if fraction >= 1 {
-            active = Text(state.activeText).foregroundStyle(Color.primary)
-        } else {
-            let feather = 0.08
-            active = Text(state.activeText).foregroundStyle(LinearGradient(
-                stops: [
-                    .init(color: .primary, location: 0),
-                    .init(color: .primary, location: max(0, fraction - feather)),
-                    .init(color: pending, location: min(1, fraction + feather)),
-                    .init(color: pending, location: 1)
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
-            ))
+    private var fillMask: some View {
+        GeometryReader { geometry in
+#if canImport(UIKit)
+            let baseFont = UIFont.preferredFont(forTextStyle: .title3)
+            let font = UIFont(
+                descriptor: baseFont.fontDescriptor.withSymbolicTraits(.traitBold)
+                    ?? baseFont.fontDescriptor,
+                size: baseFont.pointSize
+            )
+            let rows = LiveLyricsFillLayout.rows(
+                text: state.fullLine,
+                size: geometry.size,
+                font: font,
+                minimumScale: minimumScale,
+                rightToLeft: layoutDirection == .rightToLeft,
+                progress: state.fillTarget
+            )
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                let feather = min(18, max(8, row.bounds.width * 0.04))
+                let offset = row.filledWidth > 0
+                    ? row.filledWidth - row.bounds.width
+                    : -row.bounds.width - feather
+                HStack(spacing: 0) {
+                    Rectangle().fill(.white)
+                        .frame(width: row.bounds.width)
+                    LinearGradient(
+                        stops: [
+                            .init(color: .white, location: 0),
+                            .init(color: .white.opacity(0.72), location: 0.28),
+                            .init(color: .white.opacity(0.25), location: 0.66),
+                            .init(color: .clear, location: 1)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: feather)
+                }
+                .frame(width: row.bounds.width + feather, height: row.bounds.height)
+                .offset(x: offset)
+                // Override the fill animation on a line/size change only.
+                // Text keeps Apple's content fade; the cursor resets at once.
+                .animation(nil, value: state.marqueeIdentity)
+                .animation(nil, value: geometry.size)
+                .animation(state.wordFillAnimation, value: state.fillTarget)
+                .frame(width: row.bounds.width, height: row.bounds.height, alignment: .leading)
+                .clipped()
+                .environment(\.layoutDirection, .leftToRight)
+                .scaleEffect(x: layoutDirection == .rightToLeft ? -1 : 1, y: 1)
+                .offset(y: row.bounds.minY)
+                .transition(.identity)
+            }
+#else
+            Rectangle()
+#endif
         }
-
-        return Text(state.completedText).foregroundStyle(Color.primary)
-            + active
-            + Text(state.remainingText).foregroundStyle(pending)
     }
 }
 
@@ -329,11 +341,6 @@ private extension LyricsAttributes.ContentState {
         "\(title)|\(lineIndex ?? -1)|\(fullLine)"
     }
 
-    /// Excludes the compact-only marquee phase so its second state update
-    /// doesn't make the Lock Screen pulse even though no visible text changed.
-    var visibleLyricsIdentity: String {
-        "\(title)|\(artist)|\(fullLine)|\(secondaryLine)|\(nextLine)|\(isPlaying)"
-    }
 }
 
 private struct LivePlaybackControls: View {

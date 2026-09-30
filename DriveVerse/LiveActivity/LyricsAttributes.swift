@@ -28,8 +28,8 @@ struct LyricsAttributes: ActivityAttributes {
         var positionDate: Date
         var activeWordStartMs: Int
         var activeWordEndMs: Int
-        /// Target position in the full line, measured in displayed characters.
-        /// WidgetKit interpolates this value during a content update.
+        /// Target position in displayed characters. At archive time the widget
+        /// converts this to a geometric mask endpoint for native interpolation.
         var fillTarget: Double
         var fillAnimationDurationMs: Int
         /// Compact-island marquee metadata. The line index restarts a

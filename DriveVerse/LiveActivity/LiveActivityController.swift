@@ -35,6 +35,7 @@ final class LiveActivityController {
     private var pendingTask: Task<Void, Never>?
     private var lineMarqueeTask: Task<Void, Never>?
     private var wordFillTask: Task<Void, Never>?
+    private var wordFillGeneration = UUID()
     private var pendingContent: LyricsAttributes.ContentState?
     private var latestContent: LyricsAttributes.ContentState?
     private var lastSentTrackKey: String?
@@ -261,9 +262,11 @@ final class LiveActivityController {
         on activity: Activity<LyricsAttributes>
     ) {
         guard delay > 0, let expectedStartMs = latestContent?.activeWordStartMs else { return }
+        let generation = wordFillGeneration
         wordFillTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled, let self,
+                  self.wordFillGeneration == generation,
                   self.activity?.id == activity.id,
                   self.lastSentTrackKey == expectedTrackKey,
                   self.lastSentLineIndex == expectedLineIndex,
@@ -292,6 +295,7 @@ final class LiveActivityController {
             await activity.update(ActivityContent(state: content, staleDate: nil))
 
             if phaseMs > 0,
+               self.wordFillGeneration == generation,
                content.fillTarget < Double(content.completedText.count + content.activeText.count),
                self.latestContent?.activeWordStartMs == expectedStartMs,
                self.latestContent?.isPlaying == true {
@@ -306,6 +310,7 @@ final class LiveActivityController {
     }
 
     private func cancelWordFill() {
+        wordFillGeneration = UUID()
         wordFillTask?.cancel()
         wordFillTask = nil
     }

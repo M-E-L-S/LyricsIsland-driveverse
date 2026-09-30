@@ -69,6 +69,7 @@ targets:
     sources:
       - path: DriveVerseWidgets
       - path: DriveVerse/LiveActivity/LyricsAttributes.swift
+      - path: DriveVerse/LiveActivity/LiveLyricsFillLayout.swift
       - path: DriveVerse/LiveActivity/PlaybackIntents.swift
       - path: DriveVerse/Resources/Localizable.xcstrings
     settings:
