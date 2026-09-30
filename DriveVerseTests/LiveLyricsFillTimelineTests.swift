@@ -1,0 +1,61 @@
+import Testing
+@testable import DriveVerse
+
+@Suite struct LiveLyricsFillTimelineTests {
+    private func word(_ text: String, _ start: Int, _ end: Int) -> LyricWordTiming {
+        LyricWordTiming(startTimeMs: start, endTimeMs: end, original: text)
+    }
+
+    @Test func handsOffBeforeThePreviousWordFinishes() {
+        let words = [word("你", 0, 600), word("好", 600, 1_200)]
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 0, after: 0)
+                == .animate(target: 1, durationMs: 600))
+        // Already target the next word while the old animation is in flight.
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 480, after: 1)
+                == .animate(target: 2, durationMs: 720))
+    }
+
+    @Test func rapidSyllablesShareAnAnimationInsteadOfWaitingForTicks() {
+        let words = (0..<10).map { word("字", $0 * 100, ($0 + 1) * 100) }
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 0, after: 0)
+                == .animate(target: 5, durationMs: 500))
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 380, after: 5)
+                == .animate(target: 9, durationMs: 520))
+    }
+
+    @Test func longWordContinuesWithinTheSystemAnimationLimit() {
+        let words = [word("long", 0, 5_000)]
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 0, after: 0)
+                == .animate(target: 1.44, durationMs: 1_800))
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 1_680, after: 1.44)
+                == .animate(target: 2.784, durationMs: 1_800))
+    }
+
+    @Test func singingGapDoesNotLightUpTheNextWordEarly() {
+        let words = [word("你", 0, 200), word("好", 800, 1_400)]
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 0, after: 0)
+                == .animate(target: 1, durationMs: 200))
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 200, after: 1)
+                == .wait(milliseconds: 600))
+        #expect(LiveLyricsFillTimeline.progress(words: words, at: 500) == 1)
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 800, after: 1)
+                == .animate(target: 2, durationMs: 600))
+    }
+
+    @Test func completedTargetIsNotResetOrResent() {
+        let words = [word("你", 0, 600)]
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 480, after: 1)
+                == .wait(milliseconds: 120))
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 600, after: 1) == nil)
+        #expect(LiveLyricsFillTimeline.next(words: [], at: 0, after: 0) == nil)
+    }
+
+    @Test func seekAndGraphemesUseTheCurrentPosition() {
+        let words = [word("👨‍👩‍👧‍👦", 1_000, 2_000), word("e\u{301}", 2_000, 3_000)]
+        #expect(LiveLyricsFillTimeline.progress(words: words, at: 500) == 0)
+        #expect(LiveLyricsFillTimeline.progress(words: words, at: 1_500) == 0.5)
+        #expect(LiveLyricsFillTimeline.progress(words: words, at: 2_500) == 1.5)
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 2_500, after: 1.5)
+                == .animate(target: 2, durationMs: 500))
+    }
+}

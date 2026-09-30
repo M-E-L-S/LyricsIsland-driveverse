@@ -16,9 +16,8 @@ struct LyricsAttributes: ActivityAttributes {
         var artworkData: Data?
         var secondaryLine: String
         var nextLine: String
-        /// Pre-rendered word segments. Live Activities do not reliably redraw
-        /// TimelineView at sub-second intervals, so the app advances these via
-        /// Activity updates whenever the active word changes.
+        /// Pre-rendered text segments. Their joined text stays unchanged during
+        /// a line; planned mask endpoints advance independently of sync ticks.
         var completedText: String
         var activeText: String
         var remainingText: String

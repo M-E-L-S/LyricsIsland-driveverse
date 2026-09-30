@@ -97,7 +97,6 @@ struct LockScreenLyricsView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .contentTransition(.opacity)
         }
         .padding(10)
     }
@@ -124,7 +123,6 @@ struct LockScreenLyricsView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .contentTransition(.opacity)
 
         }
         .padding(10)
@@ -172,12 +170,10 @@ private struct LiveWordText: View {
     var body: some View {
         Text(state.fullLine)
             .foregroundStyle(baseColor)
-            .contentTransition(.opacity)
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .topLeading) {
                 Text(state.fullLine)
                     .foregroundStyle(.primary)
-                    .contentTransition(.opacity)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .mask { fillMask }
                     .opacity(state.usesWordTiming ? 1 : 0)
@@ -230,7 +226,7 @@ private struct LiveWordText: View {
                 .frame(width: row.bounds.width + feather, height: row.bounds.height)
                 .offset(x: offset)
                 // Override the fill animation on a line/size change only.
-                // Text keeps Apple's content fade; the cursor resets at once.
+                // Text keeps Apple's default transition; the cursor resets at once.
                 .animation(nil, value: state.marqueeIdentity)
                 .animation(nil, value: geometry.size)
                 .animation(state.wordFillAnimation, value: state.fillTarget)
