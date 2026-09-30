@@ -73,17 +73,21 @@ struct LockScreenLyricsView: View {
         Group {
             if family == .small {
                 smallBody
+                    .animation(
+                        .smooth(duration: LiveLyricsAnimationTiming.lineTransitionDuration),
+                        value: context.state.marqueeIdentity
+                    )
+            } else if context.state.usesLineParticles {
+                // Do not install a nil animation above the tile transitions.
+                mediumBody
             } else {
                 mediumBody
+                    .animation(
+                        .smooth(duration: LiveLyricsAnimationTiming.lineTransitionDuration),
+                        value: context.state.marqueeIdentity
+                    )
             }
         }
-        // Particle mode owns its transitions. An inherited text/layout
-        // transition would crossfade the two lyric snapshots over each other.
-        .animation(
-            family == .small || !context.state.usesLineParticles
-                ? .smooth(duration: LiveLyricsAnimationTiming.lineTransitionDuration) : nil,
-            value: context.state.marqueeIdentity
-        )
         .activityBackgroundTint(Color.black.opacity(0.75))
         .activitySystemActionForegroundColor(.white)
     }
@@ -152,7 +156,6 @@ private struct LockScreenLineText: View {
                 .frame(height: 48)
 #endif
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .transition(.identity)
                 .overlay(alignment: .topLeading) { LockScreenLineParticles(state: state) }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(state.fullLine))
@@ -162,8 +165,9 @@ private struct LockScreenLineText: View {
     }
 }
 
-/// Disperse the outgoing raster, swap it while invisible, then gather the
-/// incoming raster. Stable tile identities animate their native transforms.
+/// A lyric change removes the old tile views and inserts the new ones. Built-in
+/// transitions are archived with those views, so one content update animates
+/// both dispersion and gathering without an intermediate blank Activity state.
 private struct LockScreenLineParticles: View {
     let state: LyricsAttributes.ContentState
     @Environment(\.layoutDirection) private var layoutDirection
@@ -179,7 +183,7 @@ private struct LockScreenLineParticles: View {
                 size: base.pointSize
             )
             let raster = LiveLyricsParticleLayout.raster(
-                text: state.particleDisplayedText,
+                text: state.fullLine,
                 size: geometry.size,
                 font: font,
                 minimumScale: 0.75,
@@ -187,34 +191,25 @@ private struct LockScreenLineParticles: View {
                 displayScale: displayScale
             )
             if raster.tiles.isEmpty {
-                Text(state.particleDisplayedText)
+                Text(state.fullLine)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentTransition(.identity)
             } else {
                 ZStack(alignment: .topLeading) {
                     ForEach(raster.tiles) { tile in
-                        let angle = Double((tile.id * 37 + max(0, state.lineIndex ?? 0) % 360 * 13) % 360)
-                            * .pi / 180
-                        let distance = CGFloat(18 + tile.id % 17)
                         Image(uiImage: tile.image)
                             .renderingMode(.template)
                             .resizable()
                             .interpolation(.high)
                             .foregroundStyle(.primary)
                             .frame(width: tile.bounds.width, height: tile.bounds.height)
-                            .scaleEffect(state.particlesAreSettled ? 1 : 0.35)
-                            .opacity(state.particlesAreSettled ? 1 : 0)
-                            .offset(
-                                x: tile.bounds.minX + (state.particlesAreSettled ? 0 : CGFloat(cos(angle)) * distance),
-                                y: tile.bounds.minY + (state.particlesAreSettled ? 0 : CGFloat(sin(angle)) * distance * 0.5)
-                            )
-                            .contentTransition(.identity)
-                            .transition(.identity)
-                            .animation(nil, value: geometry.size)
-                            .animation(particleAnimation(tileID: tile.id), value: state.particlePhase)
+                            .offset(x: tile.bounds.minX, y: tile.bounds.minY)
+                            .id(TileIdentity(line: state.particleLineIdentity, tile: tile.id))
+                            .transition(particleTransition(tileID: tile.id))
                     }
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+                .animation(.default, value: state.particleLineIdentity)
             }
 #else
             Text(state.fullLine)
@@ -224,20 +219,35 @@ private struct LockScreenLineParticles: View {
         .environment(\.layoutDirection, .leftToRight)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-        .transition(.identity)
     }
 
-    private func particleAnimation(tileID: Int) -> Animation? {
-        guard state.isPlaying else { return nil }
-        switch state.particlePhase {
-        case .dispersing:
-            return .easeOut(duration: LiveLyricsAnimationTiming.particleDisperseDuration)
-        case .staged:
-            return nil
-        case .settled:
-            return .spring(duration: LiveLyricsAnimationTiming.particleGatherDuration, bounce: 0.12)
-                .delay(Double(tileID % 6) * LiveLyricsAnimationTiming.particleStaggerStep)
-        }
+    private struct TileIdentity: Hashable {
+        let line: LiveLyricsParticleLineIdentity
+        let tile: Int
+    }
+
+    private func particleTransition(tileID: Int) -> AnyTransition {
+        let angle = Double((tileID * 37 + max(0, state.lineIndex ?? 0) % 360 * 13) % 360)
+            * .pi / 180
+        let distance = CGFloat(18 + tileID % 17)
+        let scattered = AnyTransition.offset(
+            x: CGFloat(cos(angle)) * distance,
+            y: CGFloat(sin(angle)) * distance * 0.5
+        )
+        .combined(with: .scale(scale: 0.35))
+        .combined(with: .opacity)
+        // Each side carries its own native animation. The old glyphs finish
+        // dispersing before any incoming glyph begins to gather.
+        return .asymmetric(
+            insertion: scattered.animation(
+                .spring(duration: LiveLyricsAnimationTiming.particleGatherDuration, bounce: 0.12)
+                    .delay(LiveLyricsAnimationTiming.particleGatherDelay
+                        + Double(tileID % 6) * LiveLyricsAnimationTiming.particleStaggerStep)
+            ),
+            removal: scattered.animation(
+                .easeOut(duration: LiveLyricsAnimationTiming.particleDisperseDuration)
+            )
+        )
     }
 }
 
@@ -482,4 +492,30 @@ private struct LivePlaybackControls: View {
         .tint(.white)
     }
 }
+
+#if DEBUG
+// Use WidgetKit's content-state preview, which exercises archived updates,
+// including repeated lyrics at different indices and one/two-row changes.
+#Preview("Particle lyric transitions", as: .content, using: LyricsAttributes()) {
+    LyricsLiveActivity()
+} contentStates: {
+    particlePreviewState("风吹过，留下清晰的文字", index: 0)
+    particlePreviewState("旧句拨散之后，新的歌词从细小粒子重新聚合", index: 1)
+    particlePreviewState("旧句拨散之后，新的歌词从细小粒子重新聚合", index: 2)
+    particlePreviewState("风吹过，留下清晰的文字", index: 3)
+}
+
+private func particlePreviewState(_ line: String, index: Int) -> LyricsAttributes.ContentState {
+    LyricsAttributes.ContentState(
+        title: "MELS", artist: "DriveVerse", artworkData: nil,
+        secondaryLine: "", nextLine: "",
+        completedText: line, activeText: "", remainingText: "",
+        lyricPositionMs: index * 3_000, positionDate: Date(timeIntervalSince1970: 0),
+        activeWordStartMs: 0, activeWordEndMs: 0,
+        fillTarget: 0, fillAnimationDurationMs: 0,
+        lineIndex: index, usesWordTiming: false, lineMarqueeAtEnd: false,
+        lineMarqueeDurationMs: 0, isPlaying: true, lineEffect: .particles
+    )
+}
+#endif
 #endif

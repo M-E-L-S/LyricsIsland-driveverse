@@ -33,7 +33,6 @@ final class LiveActivityController {
     private var stateWatcher: Task<Void, Never>?
     private var pendingTask: Task<Void, Never>?
     private var lineMarqueeTask: Task<Void, Never>?
-    private var lineParticleTask: Task<Void, Never>?
     private var wordFillTask: Task<Void, Never>?
     private var wordFillGeneration = UUID()
     private var pendingContent: LyricsAttributes.ContentState?
@@ -80,7 +79,6 @@ final class LiveActivityController {
         cancelPendingUpdate()
         cancelLineMarquee()
         cancelWordFill()
-        cancelLineParticles()
         lineMarqueeAtEnd = false
         lineMarqueeDelay = 0.5
         lineMarqueeDuration = 1.8
@@ -179,13 +177,12 @@ final class LiveActivityController {
             || seekedWithinLine
             || startsWordFill
         cancelWordFill()
-        cancelLineParticles()
         lastSentTrackKey = key
         lastSentLineIndex = position?.lineIndex
         lastSentIsPlaying = state.isPlaying
         lastSentPositionMs = position?.positionMs ?? state.positionMs
         lastSentAt = now
-        var initialContent = Self.content(
+        let content = Self.content(
             state: state,
             position: position,
             wordUpdatesEnabled: wordUpdatesEnabled,
@@ -194,22 +191,6 @@ final class LiveActivityController {
             lineMarqueeAtEnd: lineMarqueeAtEnd,
             lineMarqueeDuration: lineMarqueeDuration
         )
-        let animatesParticles = startsLineMarquee && state.isPlaying
-            && initialContent.usesLineParticles
-            && LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: position?.currentLineRemainingMs)
-        let outgoingParticleText = latestContent.flatMap { previous in
-            previous.usesLineParticles && previous.particlesAreSettled
-                ? previous.particleDisplayedText : nil
-        }
-        let particleSteps = animatesParticles
-            ? LiveLyricsParticleStep.transition(
-                from: outgoingParticleText,
-                to: initialContent.completedText + initialContent.activeText + initialContent.remainingText
-            ) : []
-        if let first = particleSteps.first {
-            initialContent.applyParticleStep(first)
-        }
-        let content = initialContent
         latestContent = content
 
         switch throttle.decide(critical: critical, now: now) {
@@ -221,14 +202,6 @@ final class LiveActivityController {
                 await activity.update(ActivityContent(state: content, staleDate: nil))
                 guard self.wordFillGeneration == generation,
                       self.activity?.id == activity.id else { return }
-                if !particleSteps.isEmpty {
-                    self.scheduleLineParticleTransition(
-                        steps: Array(particleSteps.dropFirst()),
-                        expectedTrackKey: key,
-                        expectedLineIndex: position?.lineIndex,
-                        on: activity
-                    )
-                }
                 guard content.usesWordTiming, content.isPlaying else { return }
                 // Archive the initial mask first, then allow the text transition
                 // to finish. Starting both updates concurrently can lose the
@@ -305,40 +278,6 @@ final class LiveActivityController {
     private func cancelLineMarquee() {
         lineMarqueeTask?.cancel()
         lineMarqueeTask = nil
-    }
-
-    /// Each update changes native transforms of the same glyph images. The
-    /// image swap happens in the invisible staging phase, between animations.
-    private func scheduleLineParticleTransition(
-        steps: [LiveLyricsParticleStep],
-        expectedTrackKey: String,
-        expectedLineIndex: Int?,
-        on activity: Activity<LyricsAttributes>
-    ) {
-        let generation = wordFillGeneration
-        lineParticleTask = Task { [weak self] in
-            for step in steps {
-                try? await Task.sleep(for: .seconds(step.delay))
-                guard !Task.isCancelled, let self,
-                      self.wordFillGeneration == generation,
-                      self.activity?.id == activity.id,
-                      self.lastSentTrackKey == expectedTrackKey,
-                      self.lastSentLineIndex == expectedLineIndex,
-                      var content = self.latestContent,
-                      content.isPlaying, content.usesLineParticles else { return }
-                content.applyParticleStep(step)
-                self.latestContent = content
-                self.throttle.noteSent(now: Date())
-                await activity.update(ActivityContent(state: content, staleDate: nil))
-            }
-            guard let self, self.wordFillGeneration == generation else { return }
-            self.lineParticleTask = nil
-        }
-    }
-
-    private func cancelLineParticles() {
-        lineParticleTask?.cancel()
-        lineParticleTask = nil
     }
 
     /// Send the next endpoint before the native animation ends, so the system
@@ -517,7 +456,6 @@ final class LiveActivityController {
                     self.cancelPendingUpdate()
                     self.cancelLineMarquee()
                     self.cancelWordFill()
-                    self.cancelLineParticles()
                     Self.log.warning("activity ended outside the app — background restart impossible; reopen the app or rerun the CarPlay automation")
                 }
             }
@@ -532,7 +470,6 @@ final class LiveActivityController {
         cancelPendingUpdate()
         cancelLineMarquee()
         cancelWordFill()
-        cancelLineParticles()
         guard let activity else { return }
         self.activity = nil
         policy.reset()

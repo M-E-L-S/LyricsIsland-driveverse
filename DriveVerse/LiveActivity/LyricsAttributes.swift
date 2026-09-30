@@ -14,53 +14,22 @@ enum LiveLyricsLineEffect: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-enum LiveLyricsParticlePhase: Int, Codable {
-    case settled
-    case dispersing
-    case staged
-}
-
-/// Keep the outgoing glyph images until they have dispersed. Replace them
-/// only while invisible, then animate the incoming images back into place.
-struct LiveLyricsParticleStep: Equatable {
+/// Associate archived tiles with their lyric, rather than just their grid cell.
+/// Position ticks, marquee phases and playback changes keep this identity stable.
+struct LiveLyricsParticleLineIdentity: Hashable {
+    let title: String
+    let artist: String
+    let lineIndex: Int?
     let text: String
-    let phase: LiveLyricsParticlePhase
-    let delay: TimeInterval
-
-    static func transition(from outgoing: String?, to incoming: String) -> [Self] {
-        var steps: [Self] = []
-        if let outgoing, !outgoing.isEmpty {
-            steps.append(Self(text: outgoing, phase: .dispersing, delay: 0))
-        }
-        steps.append(Self(
-            text: incoming, phase: .staged,
-            delay: steps.isEmpty ? 0 : LiveLyricsAnimationTiming.particleSwapDelay
-        ))
-        steps.append(Self(
-            text: incoming, phase: .settled,
-            delay: LiveLyricsAnimationTiming.particleStartDelay
-        ))
-        return steps
-    }
 }
 
 /// Shared timing keeps line presentation and the first fill update in order.
 enum LiveLyricsAnimationTiming {
     static let lineTransitionDuration: TimeInterval = 0.35
     static let particleDisperseDuration: TimeInterval = 0.3
-    static let particleSwapDelay: TimeInterval = particleDisperseDuration + 0.1
-    static let particleStartDelay: TimeInterval = 0.25
-    static let particleGatherDuration: TimeInterval = 0.6
+    static let particleGatherDelay: TimeInterval = particleDisperseDuration + 0.02
+    static let particleGatherDuration: TimeInterval = 0.55
     static let particleStaggerStep: TimeInterval = 0.012
-
-    static func canAnimateParticles(remainingMs: Int?) -> Bool {
-        guard let remainingMs else { return true }
-        // Fast lines and seeks near the tail should remain readable rather
-        // than spending all their remaining time in the scattered phase.
-        let total = particleSwapDelay + particleStartDelay
-            + particleGatherDuration + particleStaggerStep * 5
-        return Double(remainingMs) / 1_000 >= total
-    }
 
     // Activity.update completion is not a display acknowledgement. Leave a
     // short render allowance after the transition before sending its endpoint.
@@ -113,29 +82,11 @@ struct LyricsAttributes: ActivityAttributes {
         /// Optional for activities archived before the effect selector existed.
         /// A missing preference preserves the original text presentation.
         var lineEffect: LiveLyricsLineEffect? = nil
-        /// Explicit native-animation endpoints, independent of replacing text.
-        /// Missing data from older activities means a settled, readable line.
-        var lineParticlesSettled: Bool? = nil
-
-        /// The lyric itself advances immediately for other Activity families.
-        /// Only the particle canvas retains the outgoing line while dispersing.
-        var lineParticleText: String? = nil
-        var lineParticlePhase: LiveLyricsParticlePhase? = nil
-
-        var particlePhase: LiveLyricsParticlePhase {
-            lineParticlePhase ?? (lineParticlesSettled == false ? .staged : .settled)
-        }
-
-        var particlesAreSettled: Bool { particlePhase == .settled }
-
-        var particleDisplayedText: String {
-            lineParticleText ?? (completedText + activeText + remainingText)
-        }
-
-        mutating func applyParticleStep(_ step: LiveLyricsParticleStep) {
-            lineParticleText = step.phase == .settled ? nil : step.text
-            lineParticlePhase = step.phase
-            lineParticlesSettled = step.phase == .settled
+        var particleLineIdentity: LiveLyricsParticleLineIdentity {
+            LiveLyricsParticleLineIdentity(
+                title: title, artist: artist, lineIndex: lineIndex,
+                text: completedText + activeText + remainingText
+            )
         }
 
         var usesLineParticles: Bool {
@@ -164,9 +115,6 @@ struct LyricsAttributes: ActivityAttributes {
             case lineMarqueeDurationMs = "r"
             case isPlaying = "x"
             case lineEffect = "j"
-            case lineParticlesSettled = "k"
-            case lineParticleText = "o"
-            case lineParticlePhase = "c"
         }
     }
 }

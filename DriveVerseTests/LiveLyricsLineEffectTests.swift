@@ -3,48 +3,13 @@ import Testing
 @testable import DriveVerse
 
 @Suite struct LiveLyricsParticleTimingTests {
-    @Test func normalAndUnknownLineDurationsAllowGathering() {
-        #expect(LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: 3_000))
-        #expect(LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: nil))
-    }
-
-    @Test func fastLinesAndSeeksNearTheTailStayReadable() {
-        #expect(!LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: 300))
-        #expect(!LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: 0))
-        #expect(!LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: -10))
-    }
-
-    @Test func outgoingGlyphsDisperseBeforeTheInvisibleSwapAndGather() {
-        let steps = LiveLyricsParticleStep.transition(from: "旧句", to: "新句")
-        #expect(steps.count == 3)
-        #expect(steps[0].text == "旧句")
-        #expect(steps[0].phase == .dispersing)
-        #expect(steps[0].delay == 0)
-        #expect(steps[1].text == "新句")
-        #expect(steps[1].phase == .staged)
-        #expect(steps[1].delay > LiveLyricsAnimationTiming.particleDisperseDuration)
-        #expect(steps[2].text == steps[1].text)
-        #expect(steps[2].phase == .settled)
-        #expect(steps[2].delay >= 0.2)
-    }
-
-    @Test func firstLineOrInterruptedTransitionStagesOnlyIncomingGlyphs() {
-        let missingOutgoing: [String?] = [nil, ""]
-        for outgoing in missingOutgoing {
-            let steps = LiveLyricsParticleStep.transition(from: outgoing, to: "新句")
-            #expect(steps.map(\.phase) == [.staged, .settled])
-            #expect(steps.map(\.text) == ["新句", "新句"])
-            #expect(steps.first?.delay == 0)
-        }
-    }
-
-    @Test func durationBudgetIncludesBothAnimationsAndTheInvisibleSwap() {
-        let steps = LiveLyricsParticleStep.transition(from: "旧句", to: "新句")
-        let milliseconds = Int(ceil((steps.reduce(0) { $0 + $1.delay }
+    @Test func nativeTransitionsDoNotOverlapAndStayWithinWidgetKitDurationLimit() {
+        #expect(LiveLyricsAnimationTiming.particleGatherDelay
+            >= LiveLyricsAnimationTiming.particleDisperseDuration)
+        let total = LiveLyricsAnimationTiming.particleGatherDelay
             + LiveLyricsAnimationTiming.particleGatherDuration
-            + 5 * LiveLyricsAnimationTiming.particleStaggerStep) * 1_000))
-        #expect(LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: milliseconds))
-        #expect(!LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: milliseconds - 2))
+            + 5 * LiveLyricsAnimationTiming.particleStaggerStep
+        #expect(total < 2)
     }
 }
 
@@ -102,24 +67,36 @@ import Testing
         let decoded = try JSONDecoder().decode(LyricsAttributes.ContentState.self, from: data)
         #expect(decoded.lineEffect == nil)
         #expect(!decoded.usesLineParticles)
-        #expect(decoded.particlesAreSettled)
     }
 
-    @Test func scatteredAndSettledEndpointsSurviveArchiving() throws {
+    @Test func nonLyricUpdatesDoNotRestartTileTransitions() {
         var content = state()
         content.lineEffect = .particles
-        content.lineParticlesSettled = false
-        let encoder = JSONEncoder()
-        let decoder = JSONDecoder()
-        let scattered = try decoder.decode(LyricsAttributes.ContentState.self, from: encoder.encode(content))
-        #expect(scattered.usesLineParticles)
-        #expect(!scattered.particlesAreSettled)
-        content.lineParticlesSettled = true
-        let settled = try decoder.decode(LyricsAttributes.ContentState.self, from: encoder.encode(content))
-        #expect(settled.particlesAreSettled)
-        #expect(scattered != settled)
-        #expect(scattered.completedText == settled.completedText)
-        #expect(scattered.lineIndex == settled.lineIndex)
+        let identity = content.particleLineIdentity
+        content.lyricPositionMs = 1_000
+        content.positionDate = Date(timeIntervalSince1970: 1)
+        content.fillTarget = 2
+        content.lineMarqueeAtEnd = true
+        content.isPlaying = false
+        content.secondaryLine = "translation"
+        content.nextLine = "updated next line"
+        #expect(content.particleLineIdentity == identity)
+    }
+
+    @Test func newGlyphsAndRepeatedLyricLinesReceiveNewIdentities() {
+        let content = state()
+        var changed = content
+        changed.completedText = "新的歌词"
+        #expect(changed.particleLineIdentity != content.particleLineIdentity)
+        changed = content
+        changed.lineIndex = 1
+        #expect(changed.particleLineIdentity != content.particleLineIdentity)
+        changed = content
+        changed.title = "Another Song"
+        #expect(changed.particleLineIdentity != content.particleLineIdentity)
+        changed = content
+        changed.artist = "Another Artist"
+        #expect(changed.particleLineIdentity != content.particleLineIdentity)
     }
 
     @Test func particlesRequireLineModeAndARealLyric() throws {
@@ -137,22 +114,21 @@ import Testing
         #expect(!content.usesLineParticles)
     }
 
-    @Test func particleCanvasRetainsOutgoingTextWithoutDelayingOtherFamilies() throws {
+    @Test func legacyIntermediatePhasesCannotHideOrReplaceTheCurrentLyric() throws {
         var content = state()
         content.lineEffect = .particles
         content.completedText = "新句"
-        let steps = LiveLyricsParticleStep.transition(from: "旧句", to: "新句")
-        for step in steps {
-            content.applyParticleStep(step)
-            let decoded = try JSONDecoder().decode(
-                LyricsAttributes.ContentState.self, from: JSONEncoder().encode(content)
-            )
-            #expect(decoded.completedText == "新句")
-            #expect(decoded.particleDisplayedText == step.text)
-            #expect(decoded.particlePhase == step.phase)
-            #expect(decoded.particlesAreSettled == (step.phase == .settled))
-        }
-        #expect(content.lineParticleText == nil)
+        let encoded = try JSONEncoder().encode(content)
+        var object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        object["k"] = false
+        object["o"] = "旧句"
+        object["c"] = 2
+        let decoded = try JSONDecoder().decode(
+            LyricsAttributes.ContentState.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
+        #expect(decoded.usesLineParticles)
+        #expect(decoded.particleLineIdentity.text == "新句")
     }
 }
 #endif
