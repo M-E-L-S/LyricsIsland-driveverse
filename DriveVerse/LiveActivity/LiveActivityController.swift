@@ -141,6 +141,15 @@ final class LiveActivityController {
             seekedWithinLine = false
         }
         let hasWordTimeline = Self.hasWordTimeline(position, enabled: wordUpdatesEnabled)
+        let naturallyAdvanced = lineChanged
+            && (position?.lineIndex ?? -1) > (lastSentLineIndex ?? -1)
+        // Some lines appear before their first timed word. Restart their fill
+        // when timing becomes available too, rather than skipping that prefix.
+        let timingBecameAvailable = key == lastSentTrackKey && hasWordTimeline
+            && latestContent?.usesWordTiming == false
+        let restartingLineFill = !seekedWithinLine
+            && state.isPlaying && lastSentIsPlaying == true
+            && (naturallyAdvanced || timingBecameAvailable)
         // The timeline owns word handoffs. A sync tick changing the active word
         // must not cancel an animation that has already planned ahead.
         let policyWantsUpdate = policy.shouldUpdate(
@@ -170,6 +179,7 @@ final class LiveActivityController {
             state: state,
             position: position,
             wordUpdatesEnabled: wordUpdatesEnabled,
+            restartingLineFill: restartingLineFill,
             lineMarqueeAtEnd: lineMarqueeAtEnd,
             lineMarqueeDuration: lineMarqueeDuration
         )
@@ -178,8 +188,25 @@ final class LiveActivityController {
         switch throttle.decide(critical: critical, now: now) {
         case .sendNow:
             cancelPendingUpdate() // superseded by newer content
-            Task {
+            let generation = wordFillGeneration
+            Task { [weak self] in
+                guard let self, self.wordFillGeneration == generation else { return }
                 await activity.update(ActivityContent(state: content, staleDate: nil))
+                guard self.wordFillGeneration == generation,
+                      self.activity?.id == activity.id,
+                      content.usesWordTiming, content.isPlaying else { return }
+                // Archive the initial mask first, then allow the text transition
+                // to finish. Starting both updates concurrently can lose the
+                // empty endpoint and make the future target appear instantly.
+                self.scheduleWordFill(
+                    expectedTrackKey: key,
+                    expectedLineIndex: position?.lineIndex,
+                    words: position?.currentWords ?? [],
+                    delay: restartingLineFill
+                        ? LiveLyricsAnimationTiming.lineFillStartDelay
+                        : Self.wordFillKickoffDelay,
+                    on: activity
+                )
             }
         case .coalesce(let fireIn):
             pendingContent = content
@@ -190,15 +217,6 @@ final class LiveActivityController {
                 expectedTrackKey: key,
                 expectedLineIndex: position?.lineIndex,
                 delay: lineMarqueeDelay,
-                on: activity
-            )
-        }
-        if content.usesWordTiming && state.isPlaying {
-            scheduleWordFill(
-                expectedTrackKey: key,
-                expectedLineIndex: position?.lineIndex,
-                words: position?.currentWords ?? [],
-                delay: Self.wordFillKickoffDelay,
                 on: activity
             )
         }
@@ -508,6 +526,7 @@ final class LiveActivityController {
         state: NowPlayingState,
         position: LyricsPosition?,
         wordUpdatesEnabled: Bool,
+        restartingLineFill: Bool = false,
         lineMarqueeAtEnd: Bool,
         lineMarqueeDuration: TimeInterval
     ) -> LyricsAttributes.ContentState {
@@ -519,12 +538,10 @@ final class LiveActivityController {
         )
         let lyricPositionMs = position?.lyricPositionMs ?? 0
         let fillTarget = segments.usesWordTiming
-            ? wordFillTarget(
-                completedCount: segments.completed.count,
-                activeCount: segments.active.count,
-                positionMs: lyricPositionMs,
-                startMs: segments.startMs,
-                endMs: segments.endMs
+            ? LiveLyricsFillTimeline.initialTarget(
+                words: position?.currentWords ?? [],
+                at: lyricPositionMs,
+                restartingLine: restartingLineFill
             ) : 0
         return LyricsAttributes.ContentState(
             title: String(state.title.prefix(48)),
@@ -547,19 +564,6 @@ final class LiveActivityController {
             lineMarqueeDurationMs: Int((lineMarqueeDuration * 1_000).rounded()),
             isPlaying: state.isPlaying
         )
-    }
-
-    private static func wordFillTarget(
-        completedCount: Int,
-        activeCount: Int,
-        positionMs: Int,
-        startMs: Int,
-        endMs: Int
-    ) -> Double {
-        let durationMs = max(1, endMs - startMs)
-        let fraction = min(1, max(0,
-            Double(positionMs - startMs) / Double(durationMs)))
-        return Double(completedCount) + Double(activeCount) * fraction
     }
 
     private static func hasWordTimeline(_ position: LyricsPosition?, enabled: Bool) -> Bool {

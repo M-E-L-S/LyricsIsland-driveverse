@@ -1,4 +1,13 @@
 import Foundation
+
+/// Shared timing keeps line presentation and the first fill update in order.
+enum LiveLyricsAnimationTiming {
+    static let lineTransitionDuration: TimeInterval = 0.35
+    // Activity.update completion is not a display acknowledgement. Leave a
+    // short render allowance after the transition before sending its endpoint.
+    static let lineFillStartDelay: TimeInterval = lineTransitionDuration + 0.15
+}
+
 #if canImport(ActivityKit) && os(iOS)
 import ActivityKit
 

@@ -58,4 +58,38 @@ import Testing
         #expect(LiveLyricsFillTimeline.next(words: words, at: 2_500, after: 1.5)
                 == .animate(target: 2, durationMs: 500))
     }
+
+    @Test func naturalLineChangeStartsEmptyEvenWhenDeliveryIsLate() {
+        let words = (0..<10).map { word("字", $0 * 100, ($0 + 1) * 100) }
+        let initial = LiveLyricsFillTimeline.initialTarget(
+            words: words, at: 180, restartingLine: true
+        )
+        #expect(initial == 0)
+        // After the new text has appeared, animate from that empty endpoint
+        // through the missed prefix and catch up before the line finishes.
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 680, after: initial)
+                == .animate(target: 10, durationMs: 320))
+    }
+
+    @Test func seekAndResumeDoNotReplayTheBeginning() {
+        let words = (0..<10).map { word("字", $0 * 100, ($0 + 1) * 100) }
+        #expect(LiveLyricsFillTimeline.initialTarget(
+            words: words, at: 650, restartingLine: false
+        ) == 6.5)
+    }
+
+    @Test func delayedStartStillRevealsAShortCompletedLine() {
+        let words = [word("你好", 0, 200)]
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 500, after: 0)
+                == .animate(target: 2, durationMs: 450))
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 830, after: 2) == nil)
+    }
+
+    @Test func delayedStartCatchesUpOnlyThePrefixBeforeASingingGap() {
+        let words = [word("你", 0, 200), word("好", 800, 1_400)]
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 500, after: 0)
+                == .animate(target: 1, durationMs: 300))
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 680, after: 1)
+                == .wait(milliseconds: 120))
+    }
 }

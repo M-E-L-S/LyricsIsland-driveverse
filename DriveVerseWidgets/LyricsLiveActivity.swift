@@ -68,7 +68,6 @@ struct LyricsLiveActivity: Widget {
 struct LockScreenLyricsView: View {
     let context: ActivityViewContext<LyricsAttributes>
     @Environment(\.activityFamily) private var family
-    private let lineTransitionDuration: TimeInterval = 0.18
 
     var body: some View {
         Group {
@@ -78,10 +77,10 @@ struct LockScreenLyricsView: View {
                 mediumBody
             }
         }
-        // Keep the system's text transition, but finish it before several
-        // syllables of the new line have passed. Word fill has its own animation.
+        // Keep the system's text transition. The controller waits for this
+        // presentation to settle before starting a new line's fill animation.
         .animation(
-            .smooth(duration: lineTransitionDuration),
+            .smooth(duration: LiveLyricsAnimationTiming.lineTransitionDuration),
             value: context.state.marqueeIdentity
         )
         .activityBackgroundTint(Color.black.opacity(0.75))
