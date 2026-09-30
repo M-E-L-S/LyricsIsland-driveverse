@@ -77,10 +77,11 @@ struct LockScreenLyricsView: View {
                 mediumBody
             }
         }
-        // Keep the system's text transition. The controller waits for this
-        // presentation to settle before starting a new line's fill animation.
+        // Particle mode owns its transitions. An inherited text/layout
+        // transition would crossfade the two lyric snapshots over each other.
         .animation(
-            .smooth(duration: LiveLyricsAnimationTiming.lineTransitionDuration),
+            family == .small || !context.state.usesLineParticles
+                ? .smooth(duration: LiveLyricsAnimationTiming.lineTransitionDuration) : nil,
             value: context.state.marqueeIdentity
         )
         .activityBackgroundTint(Color.black.opacity(0.75))
@@ -135,8 +136,8 @@ struct LockScreenLyricsView: View {
     }
 }
 
-/// The two line effects are mutually exclusive. Hidden text supplies the same
-/// intrinsic size in particle mode, without drawing the original transition.
+/// The particle canvas has one stable origin and height across lyric changes.
+/// No hidden Text is archived underneath its images.
 private struct LockScreenLineText: View {
     let state: LyricsAttributes.ContentState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -144,12 +145,15 @@ private struct LockScreenLineText: View {
 
     var body: some View {
         if state.usesLineParticles && !reduceMotion && !isLuminanceReduced {
-            Text(state.fullLine)
-                .hidden()
+            Color.clear
+#if canImport(UIKit)
+                .frame(height: UIFont.preferredFont(forTextStyle: .title3).lineHeight * 2)
+#else
+                .frame(height: 48)
+#endif
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .transition(.identity)
-                .animation(nil, value: state.marqueeIdentity)
-                .overlay { LockScreenLineParticles(state: state) }
+                .overlay(alignment: .topLeading) { LockScreenLineParticles(state: state) }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(state.fullLine))
         } else {
@@ -158,8 +162,8 @@ private struct LockScreenLineText: View {
     }
 }
 
-/// Dense, fine particles are rasterized into bounded tiles. ActivityKit gets
-/// distinct scattered and settled states, and interpolates native transforms.
+/// Disperse the outgoing raster, swap it while invisible, then gather the
+/// incoming raster. Stable tile identities animate their native transforms.
 private struct LockScreenLineParticles: View {
     let state: LyricsAttributes.ContentState
     @Environment(\.layoutDirection) private var layoutDirection
@@ -175,7 +179,7 @@ private struct LockScreenLineParticles: View {
                 size: base.pointSize
             )
             let raster = LiveLyricsParticleLayout.raster(
-                text: state.fullLine,
+                text: state.particleDisplayedText,
                 size: geometry.size,
                 font: font,
                 minimumScale: 0.75,
@@ -183,38 +187,34 @@ private struct LockScreenLineParticles: View {
                 displayScale: displayScale
             )
             if raster.tiles.isEmpty {
-                Text(state.fullLine)
+                Text(state.particleDisplayedText)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentTransition(.identity)
             } else {
-                ForEach(raster.tiles) { tile in
-                    let angle = Double((tile.id * 37 + max(0, state.lineIndex ?? 0) % 360 * 13) % 360)
-                        * .pi / 180
-                    let distance = CGFloat(5 + tile.id % 9)
-                    Image(uiImage: tile.image)
-                        .renderingMode(.template)
-                        .resizable()
-                        .interpolation(.high)
-                        .foregroundStyle(.primary)
-                        .frame(width: tile.bounds.width, height: tile.bounds.height)
-                        .scaleEffect(state.particlesAreSettled ? 1 : 0.7)
-                        .opacity(state.particlesAreSettled ? 1 : 0.35)
-                        .offset(
-                            x: tile.bounds.minX + (state.particlesAreSettled ? 0 : CGFloat(cos(angle)) * distance),
-                            y: tile.bounds.minY + (state.particlesAreSettled ? 0 : CGFloat(sin(angle)) * distance)
-                        )
-                        .contentTransition(.identity)
-                        .transition(.identity)
-                        .animation(nil, value: geometry.size)
-                        .animation(nil, value: state.marqueeIdentity)
-                        .animation(
-                            state.isPlaying && state.particlesAreSettled
-                                ? .spring(duration: LiveLyricsAnimationTiming.particleGatherDuration, bounce: 0.12)
-                                    .delay(Double(tile.id % 6) * LiveLyricsAnimationTiming.particleStaggerStep)
-                                : nil,
-                            value: state.particlesAreSettled
-                        )
+                ZStack(alignment: .topLeading) {
+                    ForEach(raster.tiles) { tile in
+                        let angle = Double((tile.id * 37 + max(0, state.lineIndex ?? 0) % 360 * 13) % 360)
+                            * .pi / 180
+                        let distance = CGFloat(18 + tile.id % 17)
+                        Image(uiImage: tile.image)
+                            .renderingMode(.template)
+                            .resizable()
+                            .interpolation(.high)
+                            .foregroundStyle(.primary)
+                            .frame(width: tile.bounds.width, height: tile.bounds.height)
+                            .scaleEffect(state.particlesAreSettled ? 1 : 0.35)
+                            .opacity(state.particlesAreSettled ? 1 : 0)
+                            .offset(
+                                x: tile.bounds.minX + (state.particlesAreSettled ? 0 : CGFloat(cos(angle)) * distance),
+                                y: tile.bounds.minY + (state.particlesAreSettled ? 0 : CGFloat(sin(angle)) * distance * 0.5)
+                            )
+                            .contentTransition(.identity)
+                            .transition(.identity)
+                            .animation(nil, value: geometry.size)
+                            .animation(particleAnimation(tileID: tile.id), value: state.particlePhase)
+                    }
                 }
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
             }
 #else
             Text(state.fullLine)
@@ -225,6 +225,19 @@ private struct LockScreenLineParticles: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .transition(.identity)
+    }
+
+    private func particleAnimation(tileID: Int) -> Animation? {
+        guard state.isPlaying else { return nil }
+        switch state.particlePhase {
+        case .dispersing:
+            return .easeOut(duration: LiveLyricsAnimationTiming.particleDisperseDuration)
+        case .staged:
+            return nil
+        case .settled:
+            return .spring(duration: LiveLyricsAnimationTiming.particleGatherDuration, bounce: 0.12)
+                .delay(Double(tileID % 6) * LiveLyricsAnimationTiming.particleStaggerStep)
+        }
     }
 }
 

@@ -194,11 +194,21 @@ final class LiveActivityController {
             lineMarqueeAtEnd: lineMarqueeAtEnd,
             lineMarqueeDuration: lineMarqueeDuration
         )
-        // Archive an explicit scattered endpoint before sending the settled
-        // target. A replacement of sampled text alone may render statically.
-        initialContent.lineParticlesSettled = !(startsLineMarquee && state.isPlaying
+        let animatesParticles = startsLineMarquee && state.isPlaying
             && initialContent.usesLineParticles
-            && LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: position?.currentLineRemainingMs))
+            && LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: position?.currentLineRemainingMs)
+        let outgoingParticleText = latestContent.flatMap { previous in
+            previous.usesLineParticles && previous.particlesAreSettled
+                ? previous.particleDisplayedText : nil
+        }
+        let particleSteps = animatesParticles
+            ? LiveLyricsParticleStep.transition(
+                from: outgoingParticleText,
+                to: initialContent.completedText + initialContent.activeText + initialContent.remainingText
+            ) : []
+        if let first = particleSteps.first {
+            initialContent.applyParticleStep(first)
+        }
         let content = initialContent
         latestContent = content
 
@@ -211,8 +221,9 @@ final class LiveActivityController {
                 await activity.update(ActivityContent(state: content, staleDate: nil))
                 guard self.wordFillGeneration == generation,
                       self.activity?.id == activity.id else { return }
-                if content.usesLineParticles && !content.particlesAreSettled {
-                    self.scheduleLineParticleGather(
+                if !particleSteps.isEmpty {
+                    self.scheduleLineParticleTransition(
+                        steps: Array(particleSteps.dropFirst()),
                         expectedTrackKey: key,
                         expectedLineIndex: position?.lineIndex,
                         on: activity
@@ -296,29 +307,32 @@ final class LiveActivityController {
         lineMarqueeTask = nil
     }
 
-    /// Submit one gathering target after the scattered line has been archived.
-    /// The system animates the tile offsets/opacity/scale; this is not a frame loop.
-    private func scheduleLineParticleGather(
+    /// Each update changes native transforms of the same glyph images. The
+    /// image swap happens in the invisible staging phase, between animations.
+    private func scheduleLineParticleTransition(
+        steps: [LiveLyricsParticleStep],
         expectedTrackKey: String,
         expectedLineIndex: Int?,
         on activity: Activity<LyricsAttributes>
     ) {
         let generation = wordFillGeneration
         lineParticleTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(LiveLyricsAnimationTiming.particleStartDelay))
-            guard !Task.isCancelled, let self,
-                  self.wordFillGeneration == generation,
-                  self.activity?.id == activity.id,
-                  self.lastSentTrackKey == expectedTrackKey,
-                  self.lastSentLineIndex == expectedLineIndex,
-                  var content = self.latestContent,
-                  content.isPlaying, content.usesLineParticles,
-                  !content.particlesAreSettled else { return }
-            content.lineParticlesSettled = true
-            self.latestContent = content
+            for step in steps {
+                try? await Task.sleep(for: .seconds(step.delay))
+                guard !Task.isCancelled, let self,
+                      self.wordFillGeneration == generation,
+                      self.activity?.id == activity.id,
+                      self.lastSentTrackKey == expectedTrackKey,
+                      self.lastSentLineIndex == expectedLineIndex,
+                      var content = self.latestContent,
+                      content.isPlaying, content.usesLineParticles else { return }
+                content.applyParticleStep(step)
+                self.latestContent = content
+                self.throttle.noteSent(now: Date())
+                await activity.update(ActivityContent(state: content, staleDate: nil))
+            }
+            guard let self, self.wordFillGeneration == generation else { return }
             self.lineParticleTask = nil
-            self.throttle.noteSent(now: Date())
-            await activity.update(ActivityContent(state: content, staleDate: nil))
         }
     }
 

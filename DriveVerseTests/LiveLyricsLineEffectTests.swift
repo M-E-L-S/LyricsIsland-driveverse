@@ -13,6 +13,39 @@ import Testing
         #expect(!LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: 0))
         #expect(!LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: -10))
     }
+
+    @Test func outgoingGlyphsDisperseBeforeTheInvisibleSwapAndGather() {
+        let steps = LiveLyricsParticleStep.transition(from: "旧句", to: "新句")
+        #expect(steps.count == 3)
+        #expect(steps[0].text == "旧句")
+        #expect(steps[0].phase == .dispersing)
+        #expect(steps[0].delay == 0)
+        #expect(steps[1].text == "新句")
+        #expect(steps[1].phase == .staged)
+        #expect(steps[1].delay > LiveLyricsAnimationTiming.particleDisperseDuration)
+        #expect(steps[2].text == steps[1].text)
+        #expect(steps[2].phase == .settled)
+        #expect(steps[2].delay >= 0.2)
+    }
+
+    @Test func firstLineOrInterruptedTransitionStagesOnlyIncomingGlyphs() {
+        let missingOutgoing: [String?] = [nil, ""]
+        for outgoing in missingOutgoing {
+            let steps = LiveLyricsParticleStep.transition(from: outgoing, to: "新句")
+            #expect(steps.map(\.phase) == [.staged, .settled])
+            #expect(steps.map(\.text) == ["新句", "新句"])
+            #expect(steps.first?.delay == 0)
+        }
+    }
+
+    @Test func durationBudgetIncludesBothAnimationsAndTheInvisibleSwap() {
+        let steps = LiveLyricsParticleStep.transition(from: "旧句", to: "新句")
+        let milliseconds = Int(ceil((steps.reduce(0) { $0 + $1.delay }
+            + LiveLyricsAnimationTiming.particleGatherDuration
+            + 5 * LiveLyricsAnimationTiming.particleStaggerStep) * 1_000))
+        #expect(LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: milliseconds))
+        #expect(!LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: milliseconds - 2))
+    }
 }
 
 #if !os(iOS)
@@ -102,6 +135,24 @@ import Testing
         content.lineIndex = 0
         content.completedText = ""
         #expect(!content.usesLineParticles)
+    }
+
+    @Test func particleCanvasRetainsOutgoingTextWithoutDelayingOtherFamilies() throws {
+        var content = state()
+        content.lineEffect = .particles
+        content.completedText = "新句"
+        let steps = LiveLyricsParticleStep.transition(from: "旧句", to: "新句")
+        for step in steps {
+            content.applyParticleStep(step)
+            let decoded = try JSONDecoder().decode(
+                LyricsAttributes.ContentState.self, from: JSONEncoder().encode(content)
+            )
+            #expect(decoded.completedText == "新句")
+            #expect(decoded.particleDisplayedText == step.text)
+            #expect(decoded.particlePhase == step.phase)
+            #expect(decoded.particlesAreSettled == (step.phase == .settled))
+        }
+        #expect(content.lineParticleText == nil)
     }
 }
 #endif
