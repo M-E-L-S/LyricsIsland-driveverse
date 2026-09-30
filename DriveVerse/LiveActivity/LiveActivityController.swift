@@ -60,6 +60,13 @@ final class LiveActivityController {
         }
     }
 
+    var lineEffect: LiveLyricsLineEffect = .original {
+        didSet {
+            guard lineEffect != oldValue else { return }
+            forceNextUpdate()
+        }
+    }
+
     /// Display preferences can change without a track or line change.
     /// Reset deduplication so the newly rendered text reaches ActivityKit.
     func forceNextUpdate() {
@@ -179,6 +186,7 @@ final class LiveActivityController {
             state: state,
             position: position,
             wordUpdatesEnabled: wordUpdatesEnabled,
+            lineEffect: lineEffect,
             restartingLineFill: restartingLineFill,
             lineMarqueeAtEnd: lineMarqueeAtEnd,
             lineMarqueeDuration: lineMarqueeDuration
@@ -357,6 +365,7 @@ final class LiveActivityController {
                 state: $0,
                 position: position,
                 wordUpdatesEnabled: wordUpdatesEnabled,
+                lineEffect: lineEffect,
                 lineMarqueeAtEnd: false,
                 lineMarqueeDuration: lineMarqueeDuration
             )
@@ -526,6 +535,7 @@ final class LiveActivityController {
         state: NowPlayingState,
         position: LyricsPosition?,
         wordUpdatesEnabled: Bool,
+        lineEffect: LiveLyricsLineEffect,
         restartingLineFill: Bool = false,
         lineMarqueeAtEnd: Bool,
         lineMarqueeDuration: TimeInterval
@@ -562,7 +572,8 @@ final class LiveActivityController {
             usesWordTiming: segments.usesWordTiming,
             lineMarqueeAtEnd: lineMarqueeAtEnd,
             lineMarqueeDurationMs: Int((lineMarqueeDuration * 1_000).rounded()),
-            isPlaying: state.isPlaying
+            isPlaying: state.isPlaying,
+            lineEffect: wordUpdatesEnabled ? .original : lineEffect
         )
     }
 

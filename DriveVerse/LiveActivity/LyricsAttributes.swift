@@ -1,5 +1,19 @@
 import Foundation
 
+enum LiveLyricsLineEffect: String, Codable, CaseIterable, Identifiable {
+    case original
+    case particles
+
+    var id: Self { self }
+
+    var title: LocalizedStringResource {
+        switch self {
+        case .original: return "Original effect"
+        case .particles: return "Particle effect"
+        }
+    }
+}
+
 /// Shared timing keeps line presentation and the first fill update in order.
 enum LiveLyricsAnimationTiming {
     static let lineTransitionDuration: TimeInterval = 0.35
@@ -51,6 +65,14 @@ struct LyricsAttributes: ActivityAttributes {
         /// time before the next lyric line replaces it.
         var lineMarqueeDurationMs: Int
         var isPlaying: Bool
+        /// Optional for activities archived before the effect selector existed.
+        /// A missing preference preserves the original text presentation.
+        var lineEffect: LiveLyricsLineEffect? = nil
+
+        var usesLineParticles: Bool {
+            lineEffect == .particles && !usesWordTiming
+                && lineIndex != nil && !completedText.isEmpty
+        }
 
         private enum CodingKeys: String, CodingKey {
             case title = "t"
@@ -72,6 +94,7 @@ struct LyricsAttributes: ActivityAttributes {
             case lineMarqueeAtEnd = "e"
             case lineMarqueeDurationMs = "r"
             case isPlaying = "x"
+            case lineEffect = "j"
         }
     }
 }

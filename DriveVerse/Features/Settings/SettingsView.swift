@@ -67,6 +67,19 @@ struct SettingsView: View {
             }
 
             Section {
+                Picker("Line transition effect", selection: $model.liveActivityLineEffect) {
+                    ForEach(LiveLyricsLineEffect.allCases) { effect in
+                        Text(effect.title).tag(effect)
+                    }
+                }
+                .disabled(!model.lyricsEnabled || model.liveActivityWordUpdatesEnabled)
+            } header: {
+                Text("Lock Screen line lyrics")
+            } footer: {
+                Text("Turn off word-by-word Live Activity to choose the original text transition or particle text. The two effects are shown separately.")
+            }
+
+            Section {
                 if let source = model.currentLyricsSource, model.lyricsEnabled {
                     LabeledContent("Current lyrics source", value: String(localized: source.title))
                 }

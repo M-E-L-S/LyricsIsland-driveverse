@@ -118,7 +118,7 @@ struct LockScreenLyricsView: View {
             }
             .foregroundStyle(.secondary)
 
-            LiveWordText(state: context.state, minimumScale: 0.75)
+            LockScreenLineText(state: context.state)
                 .font(.title3.bold())
                 .lineLimit(2)
                 .minimumScaleFactor(0.75)
@@ -132,6 +132,93 @@ struct LockScreenLyricsView: View {
 
         }
         .padding(10)
+    }
+}
+
+/// The two line effects are mutually exclusive. Hidden text supplies the same
+/// intrinsic size in particle mode, without drawing the original transition.
+private struct LockScreenLineText: View {
+    let state: LyricsAttributes.ContentState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
+    var body: some View {
+        if state.usesLineParticles && !reduceMotion && !isLuminanceReduced {
+            Text(state.fullLine)
+                .hidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .transition(.identity)
+                .animation(nil, value: state.marqueeIdentity)
+                .overlay { LockScreenLineParticles(state: state) }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(state.fullLine))
+        } else {
+            LiveWordText(state: state, minimumScale: 0.75)
+        }
+    }
+}
+
+/// Stable particle slots move between glyph samples using archived, native
+/// offsets; no widget-local timer or per-frame Activity updates are needed.
+private struct LockScreenLineParticles: View {
+    let state: LyricsAttributes.ContentState
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    var body: some View {
+        GeometryReader { geometry in
+#if canImport(UIKit)
+            let base = UIFont.preferredFont(forTextStyle: .title3)
+            let font = UIFont(
+                descriptor: base.fontDescriptor.withSymbolicTraits(.traitBold)
+                    ?? base.fontDescriptor,
+                size: base.pointSize
+            )
+            let points = LiveLyricsParticleLayout.points(
+                text: state.fullLine,
+                size: geometry.size,
+                font: font,
+                minimumScale: 0.75,
+                rightToLeft: layoutDirection == .rightToLeft
+            )
+            // Rotate the assignment each line so even repeated lyrics
+            // regroup, while each slot retains its identity for WidgetKit.
+            let phase = (max(0, state.lineIndex ?? 0) % max(1, points.count))
+                * max(1, points.count / 5)
+            if points.isEmpty {
+                Text(state.fullLine)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentTransition(.identity)
+            } else {
+                ForEach(points.indices, id: \.self) { slot in
+                    let point = points[(slot + phase) % points.count]
+                    let diameter = 1.5 + CGFloat(slot % 5) * 0.12
+                    Circle()
+                        .fill(.primary)
+                        .frame(width: diameter, height: diameter)
+                        .offset(x: point.x - diameter / 2, y: point.y - diameter / 2)
+                        .transition(
+                            .offset(x: CGFloat(slot % 9 - 4) * 3,
+                                    y: CGFloat(slot % 7 - 3) * 2)
+                                .combined(with: .opacity)
+                                .combined(with: .scale(scale: 0.35))
+                        )
+                        .animation(nil, value: geometry.size)
+                        .animation(
+                            .spring(duration: 0.7, bounce: 0.18)
+                                .delay(Double(slot % 6) * 0.015),
+                            value: state.marqueeIdentity
+                        )
+                }
+            }
+#else
+            Text(state.fullLine)
+#endif
+        }
+        .clipped()
+        .environment(\.layoutDirection, .leftToRight)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .transition(.identity)
     }
 }
 

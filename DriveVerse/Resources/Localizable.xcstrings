@@ -548,6 +548,46 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "即時動態逐字更新" } }
       }
     },
+    "Line transition effect" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Line transition effect" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "逐行切换效果" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "逐行切換效果" } }
+      }
+    },
+    "Lock Screen line lyrics" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Lock Screen line lyrics" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "锁屏逐行歌词" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "鎖定畫面逐行歌詞" } }
+      }
+    },
+    "Original effect" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Original effect" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "原效果" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "原效果" } }
+      }
+    },
+    "Particle effect" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Particle effect" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "粒子效果" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "粒子效果" } }
+      }
+    },
+    "Turn off word-by-word Live Activity to choose the original text transition or particle text. The two effects are shown separately." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Turn off word-by-word Live Activity to choose the original text transition or particle text. The two effects are shown separately." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "关闭实时活动逐字更新后，可选择原文字切换或粒子文字效果。两种效果独立显示。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "關閉即時動態逐字更新後，可選擇原文字切換或粒子文字效果。兩種效果獨立顯示。" } }
+      }
+    },
     "When enabled, DriveVerse sends aggressive word-level updates for the Lock Screen and CarPlay. Turn it off to update every Live Activity only when the lyric line changes." : {
       "extractionState" : "manual",
       "localizations" : {

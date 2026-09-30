@@ -31,6 +31,7 @@ final class AppModel: ObservableObject {
     private static let lyricsLineSpacingKey = "lyricsLineSpacing"
     private static let lyricsEnabledKey = "lyricsEnabled"
     private static let liveActivityWordUpdatesKey = "liveActivityWordUpdatesEnabled"
+    private static let liveActivityLineEffectKey = "liveActivityLineEffect"
 
     // MARK: UI state
 
@@ -63,6 +64,15 @@ final class AppModel: ObservableObject {
             defaults.set(liveActivityWordUpdatesEnabled, forKey: Self.liveActivityWordUpdatesKey)
 #if os(iOS)
             liveActivity.wordUpdatesEnabled = liveActivityWordUpdatesEnabled
+            syncLiveActivity()
+#endif
+        }
+    }
+    @Published var liveActivityLineEffect: LiveLyricsLineEffect {
+        didSet {
+            defaults.set(liveActivityLineEffect.rawValue, forKey: Self.liveActivityLineEffectKey)
+#if os(iOS)
+            liveActivity.lineEffect = liveActivityLineEffect
             syncLiveActivity()
 #endif
         }
@@ -151,6 +161,8 @@ final class AppModel: ObservableObject {
         liveActivityWordUpdatesEnabled = defaults.object(
             forKey: Self.liveActivityWordUpdatesKey
         ) as? Bool ?? true
+        liveActivityLineEffect = defaults.string(forKey: Self.liveActivityLineEffectKey)
+            .flatMap(LiveLyricsLineEffect.init(rawValue:)) ?? .original
         lyricsDisplayMode = defaults.string(forKey: Self.displayModeKey)
             .flatMap(LyricsDisplayMode.init(rawValue:)) ?? .originalAndTranslation
         chineseConversion = defaults.string(forKey: Self.chineseConversionKey)
@@ -180,6 +192,7 @@ final class AppModel: ObservableObject {
 
 #if os(iOS)
         liveActivity.wordUpdatesEnabled = liveActivityWordUpdatesEnabled
+        liveActivity.lineEffect = liveActivityLineEffect
         backgroundKeeper.onIssue = { [weak self] message in
             Task { @MainActor in
                 self?.errorMessage = message
