@@ -2,6 +2,19 @@ import Foundation
 import Testing
 @testable import DriveVerse
 
+@Suite struct LiveLyricsParticleTimingTests {
+    @Test func normalAndUnknownLineDurationsAllowGathering() {
+        #expect(LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: 3_000))
+        #expect(LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: nil))
+    }
+
+    @Test func fastLinesAndSeeksNearTheTailStayReadable() {
+        #expect(!LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: 300))
+        #expect(!LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: 0))
+        #expect(!LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: -10))
+    }
+}
+
 #if !os(iOS)
 // AppModel's iOS initializer owns real Live Activities; preference tests use
 // the macOS harness so they cannot end an existing device activity.
@@ -52,9 +65,28 @@ import Testing
         let data = try JSONEncoder().encode(state())
         let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(object["j"] == nil)
+        #expect(object["k"] == nil)
         let decoded = try JSONDecoder().decode(LyricsAttributes.ContentState.self, from: data)
         #expect(decoded.lineEffect == nil)
         #expect(!decoded.usesLineParticles)
+        #expect(decoded.particlesAreSettled)
+    }
+
+    @Test func scatteredAndSettledEndpointsSurviveArchiving() throws {
+        var content = state()
+        content.lineEffect = .particles
+        content.lineParticlesSettled = false
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        let scattered = try decoder.decode(LyricsAttributes.ContentState.self, from: encoder.encode(content))
+        #expect(scattered.usesLineParticles)
+        #expect(!scattered.particlesAreSettled)
+        content.lineParticlesSettled = true
+        let settled = try decoder.decode(LyricsAttributes.ContentState.self, from: encoder.encode(content))
+        #expect(settled.particlesAreSettled)
+        #expect(scattered != settled)
+        #expect(scattered.completedText == settled.completedText)
+        #expect(scattered.lineIndex == settled.lineIndex)
     }
 
     @Test func particlesRequireLineModeAndARealLyric() throws {

@@ -158,11 +158,12 @@ private struct LockScreenLineText: View {
     }
 }
 
-/// Stable particle slots move between glyph samples using archived, native
-/// offsets; no widget-local timer or per-frame Activity updates are needed.
+/// Dense, fine particles are rasterized into bounded tiles. ActivityKit gets
+/// distinct scattered and settled states, and interpolates native transforms.
 private struct LockScreenLineParticles: View {
     let state: LyricsAttributes.ContentState
     @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         GeometryReader { geometry in
@@ -173,40 +174,45 @@ private struct LockScreenLineParticles: View {
                     ?? base.fontDescriptor,
                 size: base.pointSize
             )
-            let points = LiveLyricsParticleLayout.points(
+            let raster = LiveLyricsParticleLayout.raster(
                 text: state.fullLine,
                 size: geometry.size,
                 font: font,
                 minimumScale: 0.75,
-                rightToLeft: layoutDirection == .rightToLeft
+                rightToLeft: layoutDirection == .rightToLeft,
+                displayScale: displayScale
             )
-            // Rotate the assignment each line so even repeated lyrics
-            // regroup, while each slot retains its identity for WidgetKit.
-            let phase = (max(0, state.lineIndex ?? 0) % max(1, points.count))
-                * max(1, points.count / 5)
-            if points.isEmpty {
+            if raster.tiles.isEmpty {
                 Text(state.fullLine)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentTransition(.identity)
             } else {
-                ForEach(points.indices, id: \.self) { slot in
-                    let point = points[(slot + phase) % points.count]
-                    let diameter = 1.5 + CGFloat(slot % 5) * 0.12
-                    Circle()
-                        .fill(.primary)
-                        .frame(width: diameter, height: diameter)
-                        .offset(x: point.x - diameter / 2, y: point.y - diameter / 2)
-                        .transition(
-                            .offset(x: CGFloat(slot % 9 - 4) * 3,
-                                    y: CGFloat(slot % 7 - 3) * 2)
-                                .combined(with: .opacity)
-                                .combined(with: .scale(scale: 0.35))
+                ForEach(raster.tiles) { tile in
+                    let angle = Double((tile.id * 37 + max(0, state.lineIndex ?? 0) % 360 * 13) % 360)
+                        * .pi / 180
+                    let distance = CGFloat(5 + tile.id % 9)
+                    Image(uiImage: tile.image)
+                        .renderingMode(.template)
+                        .resizable()
+                        .interpolation(.high)
+                        .foregroundStyle(.primary)
+                        .frame(width: tile.bounds.width, height: tile.bounds.height)
+                        .scaleEffect(state.particlesAreSettled ? 1 : 0.7)
+                        .opacity(state.particlesAreSettled ? 1 : 0.35)
+                        .offset(
+                            x: tile.bounds.minX + (state.particlesAreSettled ? 0 : CGFloat(cos(angle)) * distance),
+                            y: tile.bounds.minY + (state.particlesAreSettled ? 0 : CGFloat(sin(angle)) * distance)
                         )
+                        .contentTransition(.identity)
+                        .transition(.identity)
                         .animation(nil, value: geometry.size)
+                        .animation(nil, value: state.marqueeIdentity)
                         .animation(
-                            .spring(duration: 0.7, bounce: 0.18)
-                                .delay(Double(slot % 6) * 0.015),
-                            value: state.marqueeIdentity
+                            state.isPlaying && state.particlesAreSettled
+                                ? .spring(duration: LiveLyricsAnimationTiming.particleGatherDuration, bounce: 0.12)
+                                    .delay(Double(tile.id % 6) * LiveLyricsAnimationTiming.particleStaggerStep)
+                                : nil,
+                            value: state.particlesAreSettled
                         )
                 }
             }

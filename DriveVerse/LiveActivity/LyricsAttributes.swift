@@ -17,6 +17,18 @@ enum LiveLyricsLineEffect: String, Codable, CaseIterable, Identifiable {
 /// Shared timing keeps line presentation and the first fill update in order.
 enum LiveLyricsAnimationTiming {
     static let lineTransitionDuration: TimeInterval = 0.35
+    static let particleStartDelay: TimeInterval = 0.25
+    static let particleGatherDuration: TimeInterval = 0.7
+    static let particleStaggerStep: TimeInterval = 0.012
+
+    static func canAnimateParticles(remainingMs: Int?) -> Bool {
+        guard let remainingMs else { return true }
+        // Fast lines and seeks near the tail should remain readable rather
+        // than spending all their remaining time in the scattered phase.
+        let total = particleStartDelay + particleGatherDuration + particleStaggerStep * 5
+        return Double(remainingMs) / 1_000 >= total
+    }
+
     // Activity.update completion is not a display acknowledgement. Leave a
     // short render allowance after the transition before sending its endpoint.
     static let lineFillStartDelay: TimeInterval = lineTransitionDuration + 0.15
@@ -68,6 +80,11 @@ struct LyricsAttributes: ActivityAttributes {
         /// Optional for activities archived before the effect selector existed.
         /// A missing preference preserves the original text presentation.
         var lineEffect: LiveLyricsLineEffect? = nil
+        /// Explicit native-animation endpoints, independent of replacing text.
+        /// Missing data from older activities means a settled, readable line.
+        var lineParticlesSettled: Bool? = nil
+
+        var particlesAreSettled: Bool { lineParticlesSettled ?? true }
 
         var usesLineParticles: Bool {
             lineEffect == .particles && !usesWordTiming
@@ -95,6 +112,7 @@ struct LyricsAttributes: ActivityAttributes {
             case lineMarqueeDurationMs = "r"
             case isPlaying = "x"
             case lineEffect = "j"
+            case lineParticlesSettled = "k"
         }
     }
 }

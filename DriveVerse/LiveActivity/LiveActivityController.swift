@@ -33,6 +33,7 @@ final class LiveActivityController {
     private var stateWatcher: Task<Void, Never>?
     private var pendingTask: Task<Void, Never>?
     private var lineMarqueeTask: Task<Void, Never>?
+    private var lineParticleTask: Task<Void, Never>?
     private var wordFillTask: Task<Void, Never>?
     private var wordFillGeneration = UUID()
     private var pendingContent: LyricsAttributes.ContentState?
@@ -79,6 +80,7 @@ final class LiveActivityController {
         cancelPendingUpdate()
         cancelLineMarquee()
         cancelWordFill()
+        cancelLineParticles()
         lineMarqueeAtEnd = false
         lineMarqueeDelay = 0.5
         lineMarqueeDuration = 1.8
@@ -177,12 +179,13 @@ final class LiveActivityController {
             || seekedWithinLine
             || startsWordFill
         cancelWordFill()
+        cancelLineParticles()
         lastSentTrackKey = key
         lastSentLineIndex = position?.lineIndex
         lastSentIsPlaying = state.isPlaying
         lastSentPositionMs = position?.positionMs ?? state.positionMs
         lastSentAt = now
-        let content = Self.content(
+        var initialContent = Self.content(
             state: state,
             position: position,
             wordUpdatesEnabled: wordUpdatesEnabled,
@@ -191,6 +194,12 @@ final class LiveActivityController {
             lineMarqueeAtEnd: lineMarqueeAtEnd,
             lineMarqueeDuration: lineMarqueeDuration
         )
+        // Archive an explicit scattered endpoint before sending the settled
+        // target. A replacement of sampled text alone may render statically.
+        initialContent.lineParticlesSettled = !(startsLineMarquee && state.isPlaying
+            && initialContent.usesLineParticles
+            && LiveLyricsAnimationTiming.canAnimateParticles(remainingMs: position?.currentLineRemainingMs))
+        let content = initialContent
         latestContent = content
 
         switch throttle.decide(critical: critical, now: now) {
@@ -201,8 +210,15 @@ final class LiveActivityController {
                 guard let self, self.wordFillGeneration == generation else { return }
                 await activity.update(ActivityContent(state: content, staleDate: nil))
                 guard self.wordFillGeneration == generation,
-                      self.activity?.id == activity.id,
-                      content.usesWordTiming, content.isPlaying else { return }
+                      self.activity?.id == activity.id else { return }
+                if content.usesLineParticles && !content.particlesAreSettled {
+                    self.scheduleLineParticleGather(
+                        expectedTrackKey: key,
+                        expectedLineIndex: position?.lineIndex,
+                        on: activity
+                    )
+                }
+                guard content.usesWordTiming, content.isPlaying else { return }
                 // Archive the initial mask first, then allow the text transition
                 // to finish. Starting both updates concurrently can lose the
                 // empty endpoint and make the future target appear instantly.
@@ -278,6 +294,37 @@ final class LiveActivityController {
     private func cancelLineMarquee() {
         lineMarqueeTask?.cancel()
         lineMarqueeTask = nil
+    }
+
+    /// Submit one gathering target after the scattered line has been archived.
+    /// The system animates the tile offsets/opacity/scale; this is not a frame loop.
+    private func scheduleLineParticleGather(
+        expectedTrackKey: String,
+        expectedLineIndex: Int?,
+        on activity: Activity<LyricsAttributes>
+    ) {
+        let generation = wordFillGeneration
+        lineParticleTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(LiveLyricsAnimationTiming.particleStartDelay))
+            guard !Task.isCancelled, let self,
+                  self.wordFillGeneration == generation,
+                  self.activity?.id == activity.id,
+                  self.lastSentTrackKey == expectedTrackKey,
+                  self.lastSentLineIndex == expectedLineIndex,
+                  var content = self.latestContent,
+                  content.isPlaying, content.usesLineParticles,
+                  !content.particlesAreSettled else { return }
+            content.lineParticlesSettled = true
+            self.latestContent = content
+            self.lineParticleTask = nil
+            self.throttle.noteSent(now: Date())
+            await activity.update(ActivityContent(state: content, staleDate: nil))
+        }
+    }
+
+    private func cancelLineParticles() {
+        lineParticleTask?.cancel()
+        lineParticleTask = nil
     }
 
     /// Send the next endpoint before the native animation ends, so the system
@@ -456,6 +503,7 @@ final class LiveActivityController {
                     self.cancelPendingUpdate()
                     self.cancelLineMarquee()
                     self.cancelWordFill()
+                    self.cancelLineParticles()
                     Self.log.warning("activity ended outside the app — background restart impossible; reopen the app or rerun the CarPlay automation")
                 }
             }
@@ -470,6 +518,7 @@ final class LiveActivityController {
         cancelPendingUpdate()
         cancelLineMarquee()
         cancelWordFill()
+        cancelLineParticles()
         guard let activity else { return }
         self.activity = nil
         policy.reset()
