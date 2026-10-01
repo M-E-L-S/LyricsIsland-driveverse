@@ -79,6 +79,9 @@ struct LyricsAttributes: ActivityAttributes {
         /// Activity updates. Only the first update may start its point morph.
         var particleMorphRevision: Int? = nil
         var particleMorphEnabled: Bool? = nil
+        /// Source glyphs for the insertion displacement. The existing
+        /// nextLine supplies the outgoing destination before it is removed.
+        var particlePreviousText: String? = nil
         var particleLineIdentity: LiveLyricsParticleLineIdentity {
             LiveLyricsParticleLineIdentity(
                 text: completedText + activeText + remainingText
@@ -88,10 +91,41 @@ struct LyricsAttributes: ActivityAttributes {
         mutating func applyParticleMorph(_ plan: LiveLyricsParticleMorphPlan) {
             particleMorphRevision = plan.revision
             particleMorphEnabled = plan.animates
+            particlePreviousText = plan.previousText
         }
 
         mutating func stopParticleMorph() {
             particleMorphEnabled = false
+            particlePreviousText = nil
+        }
+
+        /// Adding morph context must not make an otherwise valid Activity
+        /// payload exceed its limit. Keep the current lyric readable if an
+        /// unusually large Unicode line leaves no room for source geometry.
+        mutating func boundParticleContext() {
+            guard particlePreviousText != nil,
+                  let bytes = try? JSONEncoder().encode(self), bytes.count > 4_000 else { return }
+            stopParticleMorph()
+        }
+
+        /// Build the two ends from what was actually submitted, rather than
+        /// from an intermediate sync tick which might have been superseded.
+        /// A returned state refreshes the old lyric's destination only.
+        mutating func prepareParticleTransition(from previous: Self?) -> Self? {
+            guard usesLineParticles else { return nil }
+            particleMorphEnabled = previous?.usesLineParticles == true
+                && previous?.particleLineIdentity != particleLineIdentity && isPlaying
+            particlePreviousText = particleMorphEnabled == true ? previous?.particleLineIdentity.text : nil
+            boundParticleContext()
+            guard particleMorphEnabled == true, var prepared = previous,
+                  prepared.nextLine != particleLineIdentity.text else { return nil }
+            prepared.nextLine = particleLineIdentity.text
+            prepared.stopParticleMorph()
+            guard let bytes = try? JSONEncoder().encode(prepared), bytes.count <= 4_000 else {
+                stopParticleMorph()
+                return nil
+            }
+            return prepared
         }
 
         var usesLineParticles: Bool {
@@ -122,6 +156,7 @@ struct LyricsAttributes: ActivityAttributes {
             case lineEffect = "j"
             case particleMorphRevision = "u"
             case particleMorphEnabled = "y"
+            case particlePreviousText = "z"
         }
     }
 }

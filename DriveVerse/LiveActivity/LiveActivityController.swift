@@ -23,6 +23,7 @@ final class LiveActivityController {
     /// Track changes and play/pause flips always send immediately.
     static let minUpdateInterval: TimeInterval = 0.20
     private static let wordFillKickoffDelay: TimeInterval = 0.08
+    private static let particleTargetPreparationDelay: TimeInterval = 0.12
 
     private static let log = Logger(subsystem: "io.github.mels.driveverse", category: "activity")
 
@@ -37,6 +38,7 @@ final class LiveActivityController {
     private var wordFillGeneration = UUID()
     private var pendingContent: LyricsAttributes.ContentState?
     private var latestContent: LyricsAttributes.ContentState?
+    private var lastSubmittedContent: LyricsAttributes.ContentState?
     private var particleMorphTracker = LiveLyricsParticleMorphTracker()
     private var lastSentTrackKey: String?
     private var lastSentLineIndex: Int?
@@ -200,11 +202,13 @@ final class LiveActivityController {
         )
         if content.usesLineParticles {
             content.applyParticleMorph(particlePlan)
-            if particlePlan.animates {
+            if content.isPlaying, lastSubmittedContent?.usesLineParticles == true,
+               lastSubmittedContent?.particleLineIdentity != content.particleLineIdentity {
                 // The compact island shares this ContentState. Its second
                 // update must not replace a still-running lock-screen morph.
                 lineMarqueeDelay = max(lineMarqueeDelay,
-                                      LiveLyricsParticlePhysics.settlingDuration + 0.15)
+                                      LiveLyricsParticlePhysics.settlingDuration
+                                        + Self.particleTargetPreparationDelay + 0.15)
                 let available = Double(max(0, position?.currentLineRemainingMs ?? 2_300))
                     / 1_000 - 0.25
                 lineMarqueeDuration = min(lineMarqueeDuration, max(0.12, available - lineMarqueeDelay))
@@ -219,7 +223,7 @@ final class LiveActivityController {
             let generation = wordFillGeneration
             Task { [weak self] in
                 guard let self, self.wordFillGeneration == generation else { return }
-                await activity.update(ActivityContent(state: content, staleDate: nil))
+                guard await self.submit(content, generation: generation, on: activity) else { return }
                 guard self.wordFillGeneration == generation,
                       self.activity?.id == activity.id else { return }
                 guard content.usesWordTiming, content.isPlaying else { return }
@@ -260,8 +264,30 @@ final class LiveActivityController {
             self.pendingContent = nil
             self.pendingTask = nil
             self.throttle.noteSent(now: Date())
-            await activity.update(ActivityContent(state: content, staleDate: nil))
+            _ = await self.submit(content, generation: self.wordFillGeneration, on: activity)
         }
+    }
+
+    /// A removal transition is archived with the OLD lyric, so it must already
+    /// know the destination. Normal playback supplies it through nextLine.
+    /// For a seek/track change, first refresh that destination without changing
+    /// any glyph IDs, then submit the new lyric once. There is no scatter phase.
+    private func submit(_ proposed: LyricsAttributes.ContentState, generation: UUID,
+                        on activity: Activity<LyricsAttributes>) async -> Bool {
+        guard !Task.isCancelled, wordFillGeneration == generation,
+              self.activity?.id == activity.id else { return false }
+        var content = proposed
+        if let prepared = content.prepareParticleTransition(from: lastSubmittedContent) {
+            lastSubmittedContent = prepared
+            await activity.update(ActivityContent(state: prepared, staleDate: nil))
+            try? await Task.sleep(for: .seconds(Self.particleTargetPreparationDelay))
+            guard !Task.isCancelled, wordFillGeneration == generation,
+                  self.activity?.id == activity.id else { return false }
+        }
+        lastSubmittedContent = content
+        latestContent = content
+        await activity.update(ActivityContent(state: content, staleDate: nil))
+        return true
     }
 
     private func cancelPendingUpdate() {
@@ -290,6 +316,7 @@ final class LiveActivityController {
             content.lineMarqueeAtEnd = true
             if content.usesLineParticles { content.stopParticleMorph() }
             self.latestContent = content
+            self.lastSubmittedContent = content
             self.throttle.noteSent(now: Date())
             await activity.update(ActivityContent(state: content, staleDate: nil))
             self.lineMarqueeTask = nil
@@ -414,6 +441,7 @@ final class LiveActivityController {
                 content: ActivityContent(state: content, staleDate: nil)
             )
             activity = requested
+            lastSubmittedContent = content
             watch(requested)
             throttle.noteSent(now: Date())
             if let state {
@@ -477,6 +505,7 @@ final class LiveActivityController {
                     self.lastSentAt = nil
                     self.lineMarqueeAtEnd = false
                     self.latestContent = nil
+                    self.lastSubmittedContent = nil
                     self.particleMorphTracker = LiveLyricsParticleMorphTracker()
                     self.cancelPendingUpdate()
                     self.cancelLineMarquee()
@@ -504,6 +533,7 @@ final class LiveActivityController {
         lastSentAt = nil
         lineMarqueeAtEnd = false
         latestContent = nil
+        lastSubmittedContent = nil
         particleMorphTracker = LiveLyricsParticleMorphTracker()
         await activity.end(nil, dismissalPolicy: .immediate)
     }

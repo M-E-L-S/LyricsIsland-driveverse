@@ -46,6 +46,90 @@ import Testing
 
 #if canImport(ActivityKit) && os(iOS)
 @Suite struct LiveLyricsLineEffectStateTests {
+    @Test func naturalAdvanceSharesTheExactSourceAndDestinationWithoutPreparation() throws {
+        var old = state()
+        old.lineEffect = .particles
+        old.nextLine = "新句"
+        old.particleMorphRevision = 10
+        var next = old
+        next.completedText = "新句"
+        next.nextLine = "再下一句"
+        next.particleMorphRevision = 11
+        #expect(next.prepareParticleTransition(from: old) == nil)
+        #expect(next.particleMorphEnabled == true)
+        #expect(next.particlePreviousText == old.particleLineIdentity.text)
+        #expect(old.nextLine == next.particleLineIdentity.text)
+        let decoded = try JSONDecoder().decode(LyricsAttributes.ContentState.self,
+                                               from: JSONEncoder().encode(next))
+        #expect(decoded.particlePreviousText == old.particleLineIdentity.text)
+        // Metadata/marquee refreshes must not replay the same journey.
+        var refreshed = next
+        refreshed.artist = "Updated artist"
+        #expect(refreshed.prepareParticleTransition(from: next) == nil)
+        #expect(refreshed.particleMorphEnabled == false)
+        #expect(refreshed.particleMorphRevision == 11)
+    }
+
+    @Test func unexpectedSeekUpdatesOnlyTheOldDestinationBeforeChangingGlyphs() throws {
+        var old = state()
+        old.lineEffect = .particles
+        old.particleMorphRevision = 4
+        old.particleMorphEnabled = true
+        old.particlePreviousText = "更早的歌词"
+        var seek = old
+        seek.completedText = "跳转后的歌词"
+        seek.particleMorphRevision = 6 // A superseded proposal need not be shown.
+        let prepared = try #require(seek.prepareParticleTransition(from: old))
+        #expect(prepared.particleLineIdentity == old.particleLineIdentity)
+        #expect(prepared.particleMorphRevision == old.particleMorphRevision)
+        #expect(prepared.particleMorphEnabled == false)
+        #expect(prepared.particlePreviousText == nil)
+        #expect(prepared.nextLine == seek.particleLineIdentity.text)
+        #expect(seek.particlePreviousText == old.particleLineIdentity.text)
+        #expect(seek.particleMorphEnabled == true)
+        #expect(seek.prepareParticleTransition(from: prepared) == nil)
+        #expect(seek.particleMorphEnabled == true)
+    }
+
+    @Test func pausedAndInitialStatesHaveNoDeferredMorph() {
+        var initial = state()
+        initial.lineEffect = .particles
+        #expect(initial.prepareParticleTransition(from: nil) == nil)
+        #expect(initial.particleMorphEnabled == false)
+        var paused = initial
+        paused.completedText = "暂停时换句"
+        paused.isPlaying = false
+        #expect(paused.prepareParticleTransition(from: initial) == nil)
+        #expect(paused.particlePreviousText == nil)
+        var resumed = paused
+        resumed.isPlaying = true
+        #expect(resumed.prepareParticleTransition(from: paused) == nil)
+        #expect(resumed.particleMorphEnabled == false)
+    }
+
+    @Test func morphContextFitsNormalPayloadsAndCannotOverflowLargeOnes() throws {
+        var content = state()
+        content.lineEffect = .particles
+        content.title = String(repeating: "歌", count: 48)
+        content.artist = String(repeating: "人", count: 48)
+        content.secondaryLine = String(repeating: "译", count: 72)
+        content.nextLine = String(repeating: "下", count: 72)
+        content.completedText = String(repeating: "词", count: 100)
+        content.artworkData = Data(repeating: 0, count: 1_600)
+        content.particlePreviousText = String(repeating: "前", count: 100)
+        content.particleMorphEnabled = true
+        content.boundParticleContext()
+        #expect(content.particlePreviousText != nil)
+        #expect(try JSONEncoder().encode(content).count <= 4_000)
+        content.particlePreviousText = String(repeating: "👨‍👩‍👧‍👦", count: 100)
+        content.boundParticleContext()
+        #expect(content.particlePreviousText == nil)
+        #expect(content.particleMorphEnabled == false)
+        #expect(content.completedText.count == 100)
+        #expect(content.artworkData?.count == 1_600)
+        #expect(try JSONEncoder().encode(content).count <= 4_000)
+    }
+
     private func state() -> LyricsAttributes.ContentState {
         LyricsAttributes.ContentState(
             title: "Song", artist: "Artist", artworkData: nil,
@@ -66,9 +150,11 @@ import Testing
         #expect(object["k"] == nil)
         #expect(object["u"] == nil)
         #expect(object["y"] == nil)
+        #expect(object["z"] == nil)
         let decoded = try JSONDecoder().decode(LyricsAttributes.ContentState.self, from: data)
         #expect(decoded.lineEffect == nil)
         #expect(decoded.particleMorphEnabled == nil)
+        #expect(decoded.particlePreviousText == nil)
         #expect(!decoded.usesLineParticles)
     }
 

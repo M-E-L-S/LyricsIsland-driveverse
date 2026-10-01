@@ -3,6 +3,40 @@ import Testing
 @testable import DriveVerse
 
 @Suite struct LiveLyricsParticleMorphTests {
+    @Test func bothGlyphsFollowTheSameDirectRouteAtEveryProgress() throws {
+        let old: [LiveLyricsParticleHome] = [.init(id: 4, x: 80, y: 10), .init(id: 9, x: 10, y: 20)]
+        let next: [LiveLyricsParticleHome] = [.init(id: 2, x: 150, y: 40), .init(id: 7, x: 30, y: 12)]
+        let outgoing = LiveLyricsParticleRoutes.offsets(from: old, to: next)
+        let incoming = LiveLyricsParticleRoutes.offsets(from: next, to: old)
+        // Spatial order, not IDs or array order, pairs the actual ink homes.
+        for (source, target) in [(old[0], next[0]), (old[1], next[1])] {
+            let exit = try #require(outgoing[source.id])
+            let entry = try #require(incoming[target.id])
+            for progress in [0.0, 0.1, 0.35, 0.5, 0.8, 1.0, 1.08] {
+                // Include spring overshoot. Old and new must coincide all
+                // along the route, not meet at a separate scatter endpoint.
+                #expect(abs(source.x + exit.x * progress - (target.x + entry.x * (1 - progress))) < 0.000001)
+                #expect(abs(source.y + exit.y * progress - (target.y + entry.y * (1 - progress))) < 0.000001)
+            }
+        }
+    }
+
+    @Test func changingDensityStillRoutesOnlyToRealGlyphHomes() throws {
+        let source = (0..<12).map { LiveLyricsParticleHome(id: $0, x: Double($0 * 5), y: 10) }
+        let target = (0..<5).map { LiveLyricsParticleHome(id: $0 + 20, x: Double($0 * 20), y: 30) }
+        for (from, to) in [(source, target), (target, source)] {
+            let routes = LiveLyricsParticleRoutes.offsets(from: from, to: to)
+            #expect(routes.count == from.count)
+            for home in from {
+                let delta = try #require(routes[home.id])
+                #expect(to.contains { abs($0.x - home.x - delta.x) < 0.000001
+                    && abs($0.y - home.y - delta.y) < 0.000001 })
+            }
+        }
+        #expect(LiveLyricsParticleRoutes.offsets(from: source, to: source).values.allSatisfy { $0 == .zero })
+        #expect(LiveLyricsParticleRoutes.offsets(from: source, to: []).isEmpty)
+    }
+
     @Test func initialTextAndSameTextUpdatesNeverStartAnotherMorph() {
         var tracker = LiveLyricsParticleMorphTracker()
         let initial = tracker.prepare(text: "初始句", animate: true)

@@ -185,14 +185,34 @@ private struct LockScreenLineParticles: View {
                     ?? base.fontDescriptor,
                 size: base.pointSize
             )
+            // Use the same text measurement for a visible glyph and its
+            // lookahead/source homes. Fractional SwiftUI row-height rounding
+            // must not choose different particle samples for the two ends.
+            // The enclosing canvas still takes its dynamic size from Text.
+            let glyphSize = LiveLyricsParticleLayout.naturalSize(
+                text: state.fullLine, width: geometry.size.width, font: font,
+                minimumScale: 0.75, rightToLeft: layoutDirection == .rightToLeft
+            )
             let raster = LiveLyricsParticleLayout.raster(
                 text: state.fullLine,
-                size: geometry.size,
+                size: glyphSize,
                 font: font,
                 minimumScale: 0.75,
                 rightToLeft: layoutDirection == .rightToLeft,
                 displayScale: displayScale
             )
+            let sourceHomes = LiveLyricsParticleLayout.homes(
+                text: state.particlePreviousText ?? "", width: geometry.size.width,
+                font: font, minimumScale: 0.75,
+                rightToLeft: layoutDirection == .rightToLeft, displayScale: displayScale
+            )
+            let destinationHomes = LiveLyricsParticleLayout.homes(
+                text: state.nextLine, width: geometry.size.width,
+                font: font, minimumScale: 0.75,
+                rightToLeft: layoutDirection == .rightToLeft, displayScale: displayScale
+            )
+            let incoming = LiveLyricsParticleRoutes.offsets(from: raster.homes, to: sourceHomes)
+            let outgoing = LiveLyricsParticleRoutes.offsets(from: raster.homes, to: destinationHomes)
             if raster.layers.isEmpty {
                 Text(state.fullLine)
                     .foregroundStyle(.white)
@@ -211,7 +231,10 @@ private struct LockScreenLineParticles: View {
                             .contentTransition(.identity)
                             .id(LayerIdentity(revision: state.particleMorphRevision,
                                               text: state.fullLine, layer: layer.id))
-                            .transition(particleTransition(layerID: layer.id))
+                            .transition(particleTransition(
+                                incoming: incoming[layer.id] ?? .zero,
+                                outgoing: outgoing[layer.id] ?? .zero
+                            ))
                     }
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
@@ -244,15 +267,15 @@ private struct LockScreenLineParticles: View {
         let layer: Int
     }
 
-    private func particleTransition(layerID: Int) -> AnyTransition {
-        let angle = LiveLyricsParticlePhysics.randomUnit(index: layerID, salt: 0) * 2 * .pi
-        let distance = 18 + LiveLyricsParticlePhysics.randomUnit(index: layerID, salt: 1) * 24
-        let x = CGFloat(cos(angle) * distance)
-        let y = CGFloat(sin(angle) * distance * 0.55)
-        // Both glyphs use the same displaced endpoint and the parent's
-        // single spring. Their outgoing/incoming particles overlap in time
-        // and space, without opposite entry/exit paths or a delayed phase.
-        return .offset(x: x, y: y).combined(with: .opacity)
+    private func particleTransition(incoming: LiveLyricsParticleDisplacement,
+                                    outgoing: LiveLyricsParticleDisplacement) -> AnyTransition {
+        // Incoming: old glyph home -> current home. Outgoing: current home ->
+        // next glyph home. These are the two views of ONE direct journey,
+        // driven simultaneously by the same native spring; no scatter home.
+        .asymmetric(
+            insertion: .offset(x: CGFloat(incoming.x), y: CGFloat(incoming.y)).combined(with: .opacity),
+            removal: .offset(x: CGFloat(outgoing.x), y: CGFloat(outgoing.y)).combined(with: .opacity)
+        )
     }
 }
 
@@ -504,29 +527,36 @@ private struct LivePlaybackControls: View {
 #Preview("Particle lyric transitions", as: .content, using: LyricsAttributes()) {
     LyricsLiveActivity()
 } contentStates: {
-    particlePreviewState("风吹过，留下清晰的文字", index: 0, revision: 1)
-    particlePreviewState("新旧歌词的细小白色粒子同时交接", index: 1, revision: 2, animates: true)
-    particlePreviewState("新旧歌词的细小白色粒子同时交接", index: 1, revision: 2, marqueeAtEnd: true)
-    particlePreviewState("新旧歌词的细小白色粒子同时交接", index: 1,
-                         revision: 2, marqueeAtEnd: true, artist: "Metadata refresh")
-    particlePreviewState("新旧歌词的细小白色粒子同时交接", index: 2, revision: 2)
-    particlePreviewState("风吹过，留下清晰的文字", index: 3, revision: 3, animates: true)
+    particlePreviewState("风吹过", index: 0, revision: 1,
+                         next: "旧句粒子直接移动到下一句对应的字形位置")
+    particlePreviewState("旧句粒子直接移动到下一句对应的字形位置", index: 1, revision: 2,
+                         animates: true, previous: "风吹过", next: "风吹过")
+    particlePreviewState("旧句粒子直接移动到下一句对应的字形位置", index: 1, revision: 2,
+                         marqueeAtEnd: true, next: "风吹过")
+    particlePreviewState("旧句粒子直接移动到下一句对应的字形位置", index: 1, revision: 2,
+                         marqueeAtEnd: true, artist: "Metadata refresh", next: "风吹过")
+    particlePreviewState("旧句粒子直接移动到下一句对应的字形位置", index: 2, revision: 2,
+                         next: "风吹过")
+    particlePreviewState("风吹过", index: 3, revision: 3, animates: true,
+                         previous: "旧句粒子直接移动到下一句对应的字形位置")
 }
 
 private func particlePreviewState(_ line: String, index: Int,
                                   revision: Int, animates: Bool = false,
                                   marqueeAtEnd: Bool = false,
-                                  artist: String = "DriveVerse") -> LyricsAttributes.ContentState {
+                                  artist: String = "DriveVerse", previous: String? = nil,
+                                  next: String = "") -> LyricsAttributes.ContentState {
     LyricsAttributes.ContentState(
         title: "MELS", artist: artist, artworkData: nil,
-        secondaryLine: "", nextLine: "",
+        secondaryLine: "", nextLine: next,
         completedText: line, activeText: "", remainingText: "",
         lyricPositionMs: index * 3_000, positionDate: Date(timeIntervalSince1970: 0),
         activeWordStartMs: 0, activeWordEndMs: 0,
         fillTarget: 0, fillAnimationDurationMs: 0,
         lineIndex: index, usesWordTiming: false, lineMarqueeAtEnd: marqueeAtEnd,
         lineMarqueeDurationMs: 0, isPlaying: true, lineEffect: .particles,
-        particleMorphRevision: revision, particleMorphEnabled: animates
+        particleMorphRevision: revision, particleMorphEnabled: animates,
+        particlePreviousText: previous
     )
 }
 #endif

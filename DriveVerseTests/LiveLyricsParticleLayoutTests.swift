@@ -4,6 +4,38 @@ import Testing
 @testable import DriveVerse
 
 @Suite @MainActor struct LiveLyricsParticleLayoutTests {
+    @Test func adjacentHomesUseTheirOwnHeightAndDoNotEvictSpriteImages() {
+        let font = UIFont.systemFont(ofSize: 20, weight: .bold)
+        let short = "风吹过"
+        let long = "细小粒子直接移动到下一句的字形位置"
+        let first = raster(short, width: 160, height: 25)
+        let shortSize = LiveLyricsParticleLayout.naturalSize(
+            text: short, width: 160, font: font, minimumScale: 0.75, rightToLeft: false)
+        let longSize = LiveLyricsParticleLayout.naturalSize(
+            text: long, width: 160, font: font, minimumScale: 0.75, rightToLeft: false)
+        #expect(longSize.height > shortSize.height)
+        for text in [short, long] {
+            let homes = LiveLyricsParticleLayout.homes(text: text, width: 160, font: font,
+                minimumScale: 0.75, rightToLeft: false, displayScale: 3)
+            #expect(!homes.isEmpty && homes.count <= 64)
+            #expect(homes.allSatisfy { $0.x.isFinite && $0.y.isFinite && $0.x >= 0 && $0.x <= 160 })
+        }
+        let repeated = raster(short, width: 160, height: 25)
+        for (before, after) in zip(first.layers, repeated.layers) {
+            #expect(before.image === after.image)
+        }
+        let visible = LiveLyricsParticleLayout.raster(text: long, size: longSize, font: font,
+            minimumScale: 0.75, rightToLeft: false, displayScale: 3)
+        let predicted = LiveLyricsParticleLayout.homes(text: long, width: 160, font: font,
+            minimumScale: 0.75, rightToLeft: false, displayScale: 3)
+        #expect(visible.homes == predicted)
+        #expect(visible.homes.count == visible.layers.count)
+        for (layer, home) in zip(visible.layers, visible.homes) {
+            #expect(layer.id == home.id)
+            #expect(layer.bounds.contains(CGPoint(x: home.x, y: home.y)))
+        }
+    }
+
     private func raster(_ text: String, width: CGFloat = 300, height: CGFloat = 50,
                         fontSize: CGFloat = 20, rightToLeft: Bool = false,
                         displayScale: CGFloat = 3) -> LiveLyricsParticleRaster {
