@@ -168,8 +168,9 @@ private struct LockScreenLineText: View {
     }
 }
 
-/// A stable 64-sprite approximation of the website's continuously retargeted
-/// cloud. Only native home offsets animate; internal point bitmap changes snap.
+/// Keep each sampled cohort's moving home stable, but key its glyph bitmap to
+/// the lyric. The built-in bitmap transition survives WidgetKit archiving;
+/// both glyphs travel with the same home while they hand off simultaneously.
 private struct LockScreenLineParticles: View {
     let state: LyricsAttributes.ContentState
     @Environment(\.layoutDirection) private var layoutDirection
@@ -200,8 +201,8 @@ private struct LockScreenLineParticles: View {
             } else {
                 ZStack(alignment: .topLeading) {
                     ForEach(raster.layers) { layer in
-                        // Keep a native container stable when its bitmap
-                        // resource changes. Its home offset retargets in place.
+                        // The cohort survives a lyric change. Its outgoing and
+                        // incoming glyphs share the same moving coordinate frame.
                         ZStack(alignment: .topLeading) {
                             Image(uiImage: layer.image)
                                 .renderingMode(.template)
@@ -211,24 +212,24 @@ private struct LockScreenLineParticles: View {
                                 .frame(width: layer.bounds.width, height: layer.bounds.height)
                                 .offset(x: layer.localBounds.minX, y: layer.localBounds.minY)
                                 .contentTransition(.identity)
-                                .animation(nil, value: layer.localBounds)
+                                .id(GlyphIdentity(line: state.particleLineIdentity, layer: layer.id))
+                                .transition(.opacity)
                         }
                         .frame(width: geometry.size.width, height: geometry.size.height,
                                alignment: .topLeading)
-                        .animation(nil, value: geometry.size)
                         .offset(x: layer.anchor.x, y: layer.anchor.y)
-                        .transition(.identity)
                     }
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
-                // Metadata and marquee phases keep IDs and sampled homes.
-                // Only a real text change allows native spring retargeting.
-                .animation(state.particleMorphEnabled == true ? .interpolatingSpring(
+                // Animate only glyph changes. An update-specific marker can
+                // be lost when WidgetKit coalesces a lyric with metadata;
+                // those updates must neither cancel nor replay this transition.
+                .animation(state.isPlaying ? .interpolatingSpring(
                     mass: LiveLyricsParticlePhysics.mass,
                     stiffness: LiveLyricsParticlePhysics.stiffness,
                     damping: LiveLyricsParticlePhysics.damping,
                     initialVelocity: 0
-                ) : nil, value: state)
+                ) : nil, value: state.particleLineIdentity)
             }
 #else
             Text(state.fullLine)
@@ -242,6 +243,11 @@ private struct LockScreenLineParticles: View {
         .environment(\.layoutDirection, .leftToRight)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    private struct GlyphIdentity: Hashable {
+        let line: LiveLyricsParticleLineIdentity
+        let layer: Int
     }
 }
 
@@ -494,18 +500,23 @@ private struct LivePlaybackControls: View {
     LyricsLiveActivity()
 } contentStates: {
     particlePreviewState("风吹过，留下清晰的文字", index: 0, revision: 1)
-    particlePreviewState("同一批白色粒子连续移向下一句的新位置", index: 1, revision: 2, animates: true)
+    // Simulate WidgetKit coalescing the marked lyric update with metadata.
+    // Different glyphs must still animate when the transient marker is false.
+    particlePreviewState("同一批白色粒子连续移向下一句的新位置", index: 1, revision: 2)
     particlePreviewState("同一批白色粒子连续移向下一句的新位置", index: 1, revision: 2, marqueeAtEnd: true)
     particlePreviewState("同一批白色粒子连续移向下一句的新位置", index: 1,
                          revision: 2, marqueeAtEnd: true, artist: "Metadata refresh")
     particlePreviewState("同一批白色粒子连续移向下一句的新位置", index: 2, revision: 2)
     particlePreviewState("风吹过，留下清晰的文字", index: 3, revision: 3, animates: true)
+    particlePreviewState("暂停时切换歌词", index: 4, revision: 4, isPlaying: false)
+    particlePreviewState("暂停时切换歌词", index: 4, revision: 4)
 }
 
 private func particlePreviewState(_ line: String, index: Int,
                                   revision: Int, animates: Bool = false,
                                   marqueeAtEnd: Bool = false,
-                                  artist: String = "DriveVerse") -> LyricsAttributes.ContentState {
+                                  artist: String = "DriveVerse",
+                                  isPlaying: Bool = true) -> LyricsAttributes.ContentState {
     LyricsAttributes.ContentState(
         title: "MELS", artist: artist, artworkData: nil,
         secondaryLine: "", nextLine: "",
@@ -514,7 +525,7 @@ private func particlePreviewState(_ line: String, index: Int,
         activeWordStartMs: 0, activeWordEndMs: 0,
         fillTarget: 0, fillAnimationDurationMs: 0,
         lineIndex: index, usesWordTiming: false, lineMarqueeAtEnd: marqueeAtEnd,
-        lineMarqueeDurationMs: 0, isPlaying: true, lineEffect: .particles,
+        lineMarqueeDurationMs: 0, isPlaying: isPlaying, lineEffect: .particles,
         particleMorphRevision: revision, particleMorphEnabled: animates
     )
 }

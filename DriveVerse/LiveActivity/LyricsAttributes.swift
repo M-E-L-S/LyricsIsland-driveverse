@@ -75,8 +75,9 @@ struct LyricsAttributes: ActivityAttributes {
         /// Optional for activities archived before the effect selector existed.
         /// A missing preference preserves the original text presentation.
         var lineEffect: LiveLyricsLineEffect? = nil
-        /// One revision per actual text change, preserved across all other
-        /// Activity updates. Only the first update may start its point morph.
+        /// Producer planning for marquee timing: one revision per submitted
+        /// text change. Rendering keys directly to glyphs so coalescing this
+        /// marker with a metadata update cannot suppress the transition.
         var particleMorphRevision: Int? = nil
         var particleMorphEnabled: Bool? = nil
         var particleLineIdentity: LiveLyricsParticleLineIdentity {
