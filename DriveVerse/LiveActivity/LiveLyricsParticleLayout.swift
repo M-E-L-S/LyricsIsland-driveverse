@@ -4,7 +4,12 @@ import UIKit
 struct LiveLyricsParticleLayer: Identifiable {
     let id: Int
     let bounds: CGRect
+    let anchor: CGPoint
     let image: UIImage
+
+    var localBounds: CGRect {
+        bounds.offsetBy(dx: -anchor.x, dy: -anchor.y)
+    }
 }
 
 struct LiveLyricsParticleRaster {
@@ -12,21 +17,21 @@ struct LiveLyricsParticleRaster {
     let particleCount: Int
     let inkPixelCount: Int
     let scale: CGFloat
-    /// Counts the full retained mask buffers, including cropped-out pixels.
     let bitmapBytes: Int
 }
 
-/// Batch fine glyph particles into bounded sparse bitmap layers. WidgetKit
-/// archives the whole activity (including the island), so thousands of native
-/// particle nodes can stall all presentations. Glyph ink is sampled densely
-/// without increasing the native view count or drawing outside its contour.
+/// Homepage alpha-weighted sampling and x/y rank matching, batched into 64
+/// persistent sprites for WidgetKit. Each sprite follows one sampled home;
+/// its internal dots are a bitmap approximation, not individually animated.
 @MainActor
 enum LiveLyricsParticleLayout {
-    static let particleSpacing: CGFloat = 0.55
-    static let particleDiameter: CGFloat = 0.52
-    static let groupsPerRegion = 4
+    static let particleDiameter: CGFloat = 0.64
+    // Homepage desktop sample cap; these dots live in 64 bitmaps, not 10000
+    // SwiftUI nodes. Dense sampling keeps small white strokes legible.
+    static let particleCount = 10_000
     static let maximumLayerCount = 64
     static let maximumLayerPixels = 500_000
+    private static let groupsPerRegion = 4
     private static let maximumRasterPixels = CGFloat(maximumLayerPixels / groupsPerRegion)
     private static let empty = LiveLyricsParticleRaster(
         layers: [], particleCount: 0, inkPixelCount: 0, scale: 1, bitmapBytes: 0
@@ -36,9 +41,6 @@ enum LiveLyricsParticleLayout {
         let key: NSString
         let raster: LiveLyricsParticleRaster
     }
-
-    // A single cached raster gives a hard retention bound. NSCache's limits
-    // are advisory; no collection of old lyric images should accumulate here.
     private static var cached: Samples?
 
     static func raster(text: String, size: CGSize, font: UIFont,
@@ -50,19 +52,23 @@ enum LiveLyricsParticleLayout {
               size.width <= 2_048, size.height <= 512 else { return empty }
         var scale = min(3, min(max(1, displayScale),
                               sqrt(maximumRasterPixels / (size.width * size.height))))
-        // Pixel rounding must not exceed the combined sparse-image budget.
-        while CGFloat(ceil(size.width * scale) * ceil(size.height * scale)) > maximumRasterPixels {
+        // Interleave four moving cohorts per sorted x region, so each sprite
+        // contains disconnected dots instead of a solid vertical glyph strip.
+        let maximumDiameter = particleDiameter * 1.245
+        while ceil(size.width * scale) * ceil(size.height * scale) > maximumRasterPixels
+            || (ceil(size.width * scale) * CGFloat(groupsPerRegion)
+                + CGFloat(maximumLayerCount) * (ceil(max(maximumDiameter * scale, 1.6)) + 4))
+                * ceil(size.height * scale) > CGFloat(maximumLayerPixels) {
             scale *= 0.99
         }
         let key = "\(text)|\(size.width)|\(size.height)|\(font.fontName)|\(font.pointSize)|\(minimumScale)|\(rightToLeft)|\(scale)" as NSString
         if let cached, cached.key == key { return cached.raster }
         cached = nil
-
         let full = Measurement(text: text, width: size.width, font: font,
                                rightToLeft: rightToLeft, lineLimit: 0)
-        let visibleCount = min(2, full.fragments.count)
-        guard visibleCount > 0 else { return empty }
-        let fullHeight = full.fragments[visibleCount - 1].bounds.maxY
+        let visibleRows = min(2, full.fragments.count)
+        guard visibleRows > 0 else { return empty }
+        let fullHeight = full.fragments[visibleRows - 1].bounds.maxY
         let needsScaling = full.fragments.count > 2 || fullHeight > size.height + 1
         let fontScale = needsScaling
             ? min(1, max(minimumScale, size.height / max(1, fullHeight))) : 1
@@ -70,17 +76,10 @@ enum LiveLyricsParticleLayout {
                                    font: font.withSize(font.pointSize * fontScale),
                                    rightToLeft: rightToLeft, lineLimit: 2)
         guard !measured.fragments.isEmpty else { return empty }
-
         let width = Int(ceil(size.width * scale))
         let height = Int(ceil(size.height * scale))
-        guard let bitmap = CGContext(
-            data: nil, width: width, height: height, bitsPerComponent: 8,
-            bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-                | CGBitmapInfo.byteOrder32Big.rawValue
-        ), let data = bitmap.data else { return empty }
-
-        // TextKit draws in UIKit's top-left coordinate system.
+        guard let bitmap = makeBitmap(width: width, height: height),
+              let data = bitmap.data else { return empty }
         bitmap.translateBy(x: 0, y: CGFloat(height))
         bitmap.scaleBy(x: scale, y: -scale)
         UIGraphicsPushContext(bitmap)
@@ -92,131 +91,131 @@ enum LiveLyricsParticleLayout {
             )
         }
         UIGraphicsPopContext()
-
         let pixels = data.assumingMemoryBound(to: UInt8.self)
-        var particleCount = 0
-        for x in stride(from: Double(particleSpacing / 2), to: Double(size.width), by: Double(particleSpacing)) {
-            for y in stride(from: Double(particleSpacing / 2), to: Double(size.height), by: Double(particleSpacing)) {
-                let px = min(width - 1, Int(x * Double(scale)))
-                let py = min(height - 1, Int(y * Double(scale)))
-                if pixels[py * bitmap.bytesPerRow + px * 4 + 3] > 0 {
-                    particleCount += 1
-                }
-            }
-        }
-        // Preserve the original antialiased alpha instead of thresholding and
-        // discarding samples. Fine strokes keep their exact silhouette, with
-        // a faint connection between subpixel dots to keep small type legible.
-        var inkPixelCount = 0
+        var ink: [Int] = []
+        var weights: [Double] = []
+        var totalWeight = 0.0
         for y in 0..<height {
             for x in 0..<width {
-                let index = y * bitmap.bytesPerRow + x * 4
-                let alpha = pixels[index + 3]
-                guard alpha > 0 else { continue }
-                inkPixelCount += 1
-                let dx = ((CGFloat(x) + 0.5) / scale)
-                    .truncatingRemainder(dividingBy: particleSpacing) - particleSpacing / 2
-                let dy = ((CGFloat(y) + 0.5) / scale)
-                    .truncatingRemainder(dividingBy: particleSpacing) - particleSpacing / 2
-                let coverage = max(0.32, min(1,
-                    (particleDiameter / 2 - sqrt(dx * dx + dy * dy)) * scale + 0.6))
-                let value = UInt8(max(1, (CGFloat(alpha) * coverage).rounded()))
-                // Premultiplied white; never introduce pixels outside glyph ink.
-                pixels[index] = value
-                pixels[index + 1] = value
-                pixels[index + 2] = value
-                pixels[index + 3] = value
+                let alpha = pixels[y * bitmap.bytesPerRow + x * 4 + 3]
+                guard alpha >= 128 else { continue }
+                totalWeight += Double(alpha)
+                ink.append(y * width + x)
+                weights.append(totalWeight)
             }
         }
-        // A region contains four interleaved masks of disconnected microdots.
-        // Increasing region size limits view count without increasing dot size.
-        var side = max(1, Int(ceil(24 * scale)))
-        while ((width + side - 1) / side) * ((height + side - 1) / side) * groupsPerRegion > maximumLayerCount {
-            side += 1
+        guard !ink.isEmpty else { return empty }
+        var positions: [CGPoint] = []
+        positions.reserveCapacity(particleCount)
+        for index in 0..<particleCount {
+            let pick = (Double(index) + LiveLyricsParticlePhysics.randomUnit(index: index, salt: 0))
+                / Double(particleCount) * totalWeight
+            var low = 0
+            var high = weights.count - 1
+            while low < high {
+                let middle = (low + high) / 2
+                if weights[middle] < pick { low = middle + 1 } else { high = middle }
+            }
+            let pixel = ink[low]
+            positions.append(CGPoint(
+                x: (CGFloat(pixel % width) + CGFloat(LiveLyricsParticlePhysics.randomUnit(index: index, salt: 1))) / scale,
+                y: (CGFloat(pixel / width) + CGFloat(LiveLyricsParticlePhysics.randomUnit(index: index, salt: 2))) / scale
+            ))
         }
-        let columns = (width + side - 1) / side
+        positions.sort { $0.x == $1.x ? $0.y < $1.y : $0.x < $1.x }
         var layers: [LiveLyricsParticleLayer] = []
         var imageCost = 0
-        for y in stride(from: 0, to: height, by: side) {
-            for x in stride(from: 0, to: width, by: side) {
-                let regionWidth = min(side, width - x)
-                let regionHeight = min(side, height - y)
-                let hasInk = (y..<(y + regionHeight)).contains { row in
-                    (x..<(x + regionWidth)).contains { column in
-                        pixels[row * bitmap.bytesPerRow + column * 4 + 3] > 0
+        for group in 0..<maximumLayerCount {
+            let regions = maximumLayerCount / groupsPerRegion
+            let region = group / groupsPerRegion
+            let start = region * particleCount / regions
+            let end = (region + 1) * particleCount / regions
+            let indices = Array(stride(from: start + group % groupsPerRegion,
+                                       to: end, by: groupsPerRegion))
+            let anchor = positions[indices[indices.count / 2]]
+            var minX = CGFloat.greatestFiniteMagnitude
+            var minY = CGFloat.greatestFiniteMagnitude
+            var maxX: CGFloat = 0
+            var maxY: CGFloat = 0
+            for index in indices {
+                let point = positions[index]
+                let radius = diameter(rank: index, scale: scale) / 2
+                minX = min(minX, point.x - radius)
+                minY = min(minY, point.y - radius)
+                maxX = max(maxX, point.x + radius)
+                maxY = max(maxY, point.y + radius)
+            }
+            let left = max(0, Int(floor(minX * scale)) - 1)
+            let top = max(0, Int(floor(minY * scale)) - 1)
+            let right = min(width, Int(ceil(maxX * scale)) + 1)
+            let bottom = min(height, Int(ceil(maxY * scale)) + 1)
+            guard right > left, bottom > top,
+                  let mask = makeBitmap(width: right - left, height: bottom - top),
+                  let maskData = mask.data else { return empty }
+            imageCost += mask.bytesPerRow * (bottom - top)
+            guard imageCost <= maximumLayerPixels * 4 else { return empty }
+            let target = maskData.assumingMemoryBound(to: UInt8.self)
+            for index in indices {
+                let center = CGPoint(x: positions[index].x * scale,
+                                     y: positions[index].y * scale)
+                let radius = diameter(rank: index, scale: scale) * scale / 2
+                let firstX = max(left, Int(floor(center.x - radius - 0.5)))
+                let lastX = min(right - 1, Int(ceil(center.x + radius + 0.5)))
+                let firstY = max(top, Int(floor(center.y - radius - 0.5)))
+                let lastY = min(bottom - 1, Int(ceil(center.y + radius + 0.5)))
+                for y in firstY...lastY {
+                    for x in firstX...lastX {
+                        // Like the site's settled fragment shader: clip the
+                        // entire point footprint to the text alpha threshold.
+                        guard pixels[y * bitmap.bytesPerRow + x * 4 + 3] >= 128 else { continue }
+                        let dx = CGFloat(x) + 0.5 - center.x
+                        let dy = CGFloat(y) + 0.5 - center.y
+                        let coverage = min(1, max(0, radius + 0.5 - sqrt(dx * dx + dy * dy)))
+                        let value = UInt8((coverage * 255).rounded())
+                        let destination = (y - top) * mask.bytesPerRow + (x - left) * 4
+                        guard value > target[destination + 3] else { continue }
+                        // Pure premultiplied white, without the previous dim
+                        // grain multiplier or lyric fade-out/fade-in phases.
+                        for channel in 0..<4 { target[destination + channel] = value }
                     }
-                }
-                guard hasInk else { continue }
-                let masks = (0..<groupsPerRegion).compactMap { _ in
-                    CGContext(
-                        data: nil, width: regionWidth, height: regionHeight,
-                        bitsPerComponent: 8, bytesPerRow: regionWidth * 4,
-                        space: CGColorSpaceCreateDeviceRGB(),
-                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-                            | CGBitmapInfo.byteOrder32Big.rawValue
-                    )
-                }
-                let buffers = masks.compactMap { $0.data?.assumingMemoryBound(to: UInt8.self) }
-                guard buffers.count == groupsPerRegion else { return empty }
-                for mask in masks {
-                    mask.clear(CGRect(x: 0, y: 0, width: regionWidth, height: regionHeight))
-                }
-                var left = Array(repeating: regionWidth, count: groupsPerRegion)
-                var top = Array(repeating: regionHeight, count: groupsPerRegion)
-                var right = Array(repeating: -1, count: groupsPerRegion)
-                var bottom = Array(repeating: -1, count: groupsPerRegion)
-                for row in 0..<regionHeight {
-                    for column in 0..<regionWidth {
-                        let source = (y + row) * bitmap.bytesPerRow + (x + column) * 4
-                        guard pixels[source + 3] > 0 else { continue }
-                        let cellX = Int((CGFloat(x + column) + 0.5) / scale / particleSpacing)
-                        let cellY = Int((CGFloat(y + row) + 0.5) / scale / particleSpacing)
-                        let group = particleGroup(column: cellX, row: cellY)
-                        let destination = row * masks[group].bytesPerRow + column * 4
-                        for channel in 0..<4 {
-                            buffers[group][destination + channel] = pixels[source + channel]
-                        }
-                        left[group] = min(left[group], column)
-                        top[group] = min(top[group], row)
-                        right[group] = max(right[group], column)
-                        bottom[group] = max(bottom[group], row)
-                    }
-                }
-                for group in 0..<groupsPerRegion where right[group] >= 0 {
-                    let cropBounds = CGRect(
-                        x: left[group], y: top[group],
-                        width: right[group] - left[group] + 1,
-                        height: bottom[group] - top[group] + 1
-                    )
-                    guard let image = masks[group].makeImage(),
-                          let crop = image.cropping(to: cropBounds) else { return empty }
-                    layers.append(LiveLyricsParticleLayer(
-                        id: ((y / side) * columns + x / side) * groupsPerRegion + group,
-                        bounds: CGRect(
-                            x: (CGFloat(x) + cropBounds.minX) / scale,
-                            y: (CGFloat(y) + cropBounds.minY) / scale,
-                            width: cropBounds.width / scale, height: cropBounds.height / scale
-                        ),
-                        image: UIImage(cgImage: crop, scale: scale, orientation: .up)
-                    ))
-                    // Cropped CGImages may retain the full mask backing store.
-                    imageCost += masks[group].bytesPerRow * regionHeight
                 }
             }
+            guard let image = mask.makeImage() else { return empty }
+            layers.append(LiveLyricsParticleLayer(
+                id: group,
+                bounds: CGRect(x: CGFloat(left) / scale, y: CGFloat(top) / scale,
+                               width: CGFloat(right - left) / scale,
+                               height: CGFloat(bottom - top) / scale),
+                anchor: anchor,
+                image: UIImage(cgImage: image, scale: scale, orientation: .up)
+            ))
         }
-        guard layers.count <= maximumLayerCount,
-              imageCost <= maximumLayerPixels * 4 else { return empty }
         let result = LiveLyricsParticleRaster(
-            layers: layers, particleCount: particleCount, inkPixelCount: inkPixelCount,
+            layers: layers, particleCount: particleCount, inkPixelCount: ink.count,
             scale: scale, bitmapBytes: imageCost
         )
         cached = Samples(key: key, raster: result)
         return result
     }
 
-    static func particleGroup(column: Int, row: Int) -> Int {
-        let seed = (UInt64(column) &* 73_856_093) ^ (UInt64(row) &* 19_349_663)
-        return Int((seed ^ (seed >> 13)) % UInt64(groupsPerRegion))
+    private static func diameter(rank: Int, scale: CGFloat) -> CGFloat {
+        let varied = particleDiameter * CGFloat(1 + 0.35
+            * (LiveLyricsParticlePhysics.randomUnit(index: rank, salt: 3) - 0.5) * 1.4)
+        // Downsampled large-type rasters still need white particle cores,
+        // rather than only faint subpixel antialiasing. Glyph clipping keeps
+        // the larger footprints inside the original text contour.
+        return max(varied, 1.6 / scale)
+    }
+
+    private static func makeBitmap(width: Int, height: Int) -> CGContext? {
+        guard let bitmap = CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8,
+            bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                | CGBitmapInfo.byteOrder32Big.rawValue
+        ) else { return nil }
+        bitmap.clear(CGRect(x: 0, y: 0, width: width, height: height))
+        return bitmap
     }
 
     private struct Fragment {

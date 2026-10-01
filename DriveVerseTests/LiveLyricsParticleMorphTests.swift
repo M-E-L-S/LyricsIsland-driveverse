@@ -47,7 +47,7 @@ import Testing
         #expect(resumed.revision == paused.revision)
     }
 
-    @Test func archivedScatterDirectionsAreDeterministicAndVaried() {
+    @Test func archivedSamplingIsDeterministicAndVaried() {
         let first = (0..<100).map { LiveLyricsParticlePhysics.randomUnit(index: $0, salt: 0) }
         let repeated = (0..<100).map { LiveLyricsParticlePhysics.randomUnit(index: $0, salt: 0) }
         #expect(first == repeated)

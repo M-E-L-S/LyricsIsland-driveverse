@@ -158,15 +158,18 @@ private struct LockScreenLineText: View {
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(state.fullLine))
+        } else if state.usesLineParticles {
+            Text(state.fullLine)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             LiveWordText(state: state, minimumScale: 0.75)
         }
     }
 }
 
-/// Each native image holds many disconnected microdots. Keep the archived
-/// view tree bounded; the lock screen and island share the rendering extension.
-/// A lyric revision replaces the layers once, while other updates retain them.
+/// A stable 64-sprite approximation of the website's continuously retargeted
+/// cloud. Only native home offsets animate; internal point bitmap changes snap.
 private struct LockScreenLineParticles: View {
     let state: LyricsAttributes.ContentState
     @Environment(\.layoutDirection) private var layoutDirection
@@ -191,27 +194,35 @@ private struct LockScreenLineParticles: View {
             )
             if raster.layers.isEmpty {
                 Text(state.fullLine)
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentTransition(.identity)
             } else {
                 ZStack(alignment: .topLeading) {
                     ForEach(raster.layers) { layer in
-                        Image(uiImage: layer.image)
-                            .renderingMode(.template)
-                            .resizable()
-                            .interpolation(.high)
-                            .foregroundStyle(.primary)
-                            .frame(width: layer.bounds.width, height: layer.bounds.height)
-                            .offset(x: layer.bounds.minX, y: layer.bounds.minY)
-                            .contentTransition(.identity)
-                            .id(LayerIdentity(revision: state.particleMorphRevision,
-                                              text: state.fullLine, layer: layer.id))
-                            .transition(particleTransition(layerID: layer.id))
+                        // Keep a native container stable when its bitmap
+                        // resource changes. Its home offset retargets in place.
+                        ZStack(alignment: .topLeading) {
+                            Image(uiImage: layer.image)
+                                .renderingMode(.template)
+                                .resizable()
+                                .interpolation(.high)
+                                .foregroundStyle(.white)
+                                .frame(width: layer.bounds.width, height: layer.bounds.height)
+                                .offset(x: layer.localBounds.minX, y: layer.localBounds.minY)
+                                .contentTransition(.identity)
+                                .animation(nil, value: layer.localBounds)
+                        }
+                        .frame(width: geometry.size.width, height: geometry.size.height,
+                               alignment: .topLeading)
+                        .animation(nil, value: geometry.size)
+                        .offset(x: layer.anchor.x, y: layer.anchor.y)
+                        .transition(.identity)
                     }
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
-                // No per-layer animation override: non-lyric updates must be
-                // able to disable all transitions in this archived subtree.
+                // Metadata and marquee phases keep IDs and sampled homes.
+                // Only a real text change allows native spring retargeting.
                 .animation(state.particleMorphEnabled == true ? .interpolatingSpring(
                     mass: LiveLyricsParticlePhysics.mass,
                     stiffness: LiveLyricsParticlePhysics.stiffness,
@@ -221,6 +232,7 @@ private struct LockScreenLineParticles: View {
             }
 #else
             Text(state.fullLine)
+                .foregroundStyle(.white)
 #endif
         }
         // Drawing room for the cloud, without adding layout height/width.
@@ -230,23 +242,6 @@ private struct LockScreenLineParticles: View {
         .environment(\.layoutDirection, .leftToRight)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-    }
-
-    private struct LayerIdentity: Hashable {
-        let revision: Int?
-        let text: String
-        let layer: Int
-    }
-
-    private func particleTransition(layerID: Int) -> AnyTransition {
-        let angle = LiveLyricsParticlePhysics.randomUnit(index: layerID, salt: 0) * 2 * .pi
-        let distance = 18 + LiveLyricsParticlePhysics.randomUnit(index: layerID, salt: 1) * 24
-        let x = CGFloat(cos(angle) * distance)
-        let y = CGFloat(sin(angle) * distance * 0.55)
-        return .asymmetric(
-            insertion: .offset(x: -x, y: -y).combined(with: .opacity),
-            removal: .offset(x: x, y: y).combined(with: .opacity)
-        )
     }
 }
 
@@ -499,11 +494,11 @@ private struct LivePlaybackControls: View {
     LyricsLiveActivity()
 } contentStates: {
     particlePreviewState("风吹过，留下清晰的文字", index: 0, revision: 1)
-    particlePreviewState("旧句拨散之后，新的歌词从细小粒子重新聚合", index: 1, revision: 2, animates: true)
-    particlePreviewState("旧句拨散之后，新的歌词从细小粒子重新聚合", index: 1, revision: 2, marqueeAtEnd: true)
-    particlePreviewState("旧句拨散之后，新的歌词从细小粒子重新聚合", index: 1,
+    particlePreviewState("同一批白色粒子连续移向下一句的新位置", index: 1, revision: 2, animates: true)
+    particlePreviewState("同一批白色粒子连续移向下一句的新位置", index: 1, revision: 2, marqueeAtEnd: true)
+    particlePreviewState("同一批白色粒子连续移向下一句的新位置", index: 1,
                          revision: 2, marqueeAtEnd: true, artist: "Metadata refresh")
-    particlePreviewState("旧句拨散之后，新的歌词从细小粒子重新聚合", index: 2, revision: 2)
+    particlePreviewState("同一批白色粒子连续移向下一句的新位置", index: 2, revision: 2)
     particlePreviewState("风吹过，留下清晰的文字", index: 3, revision: 3, animates: true)
 }
 
