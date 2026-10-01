@@ -47,20 +47,7 @@ import Testing
         #expect(resumed.revision == paused.revision)
     }
 
-    @Test func densityChangesKeepTheSameRankPoolAndExactVisibleCount() {
-        for count in [1, 1_600, 2_345, 5_999, 6_000, 6_001] {
-            let visible = (0..<LiveLyricsParticlePhysics.maximumCount).filter {
-                LiveLyricsParticlePhysics.isVisible(rank: $0, count: count)
-            }
-            #expect(visible.count == min(count, LiveLyricsParticlePhysics.maximumCount))
-            #expect(Set(visible).count == visible.count)
-        }
-        #expect(!LiveLyricsParticlePhysics.isVisible(rank: -1, count: 1_600))
-        #expect(!LiveLyricsParticlePhysics.isVisible(rank: 6_000, count: 1_600))
-        #expect(!LiveLyricsParticlePhysics.isVisible(rank: 0, count: 0))
-    }
-
-    @Test func archivedSamplingIsDeterministicAndVaried() {
+    @Test func archivedScatterDirectionsAreDeterministicAndVaried() {
         let first = (0..<100).map { LiveLyricsParticlePhysics.randomUnit(index: $0, salt: 0) }
         let repeated = (0..<100).map { LiveLyricsParticlePhysics.randomUnit(index: $0, salt: 0) }
         #expect(first == repeated)

@@ -164,9 +164,9 @@ private struct LockScreenLineText: View {
     }
 }
 
-/// Match the homepage's x/y-sorted particles, preserving each point's native
-/// view identity across lyrics. System spring interpolation moves old points
-/// directly to their new homes; there are no outgoing/incoming glyph images.
+/// Each native image holds many disconnected microdots. Keep the archived
+/// view tree bounded; the lock screen and island share the rendering extension.
+/// A lyric revision replaces the layers once, while other updates retain them.
 private struct LockScreenLineParticles: View {
     let state: LyricsAttributes.ContentState
     @Environment(\.layoutDirection) private var layoutDirection
@@ -181,7 +181,7 @@ private struct LockScreenLineParticles: View {
                     ?? base.fontDescriptor,
                 size: base.pointSize
             )
-            let cloud = LiveLyricsParticleLayout.cloud(
+            let raster = LiveLyricsParticleLayout.raster(
                 text: state.fullLine,
                 size: geometry.size,
                 font: font,
@@ -189,26 +189,29 @@ private struct LockScreenLineParticles: View {
                 rightToLeft: layoutDirection == .rightToLeft,
                 displayScale: displayScale
             )
-            if cloud.points.isEmpty {
+            if raster.layers.isEmpty {
                 Text(state.fullLine)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentTransition(.identity)
             } else {
                 ZStack(alignment: .topLeading) {
-                    ForEach(cloud.points) { point in
-                        Circle()
-                            .fill(.primary)
-                            .frame(width: point.diameter, height: point.diameter)
-                            .opacity(point.opacity)
-                            .offset(x: point.position.x - point.diameter / 2,
-                                    y: point.position.y - point.diameter / 2)
-                            .transition(.identity)
+                    ForEach(raster.layers) { layer in
+                        Image(uiImage: layer.image)
+                            .renderingMode(.template)
+                            .resizable()
+                            .interpolation(.high)
+                            .foregroundStyle(.primary)
+                            .frame(width: layer.bounds.width, height: layer.bounds.height)
+                            .offset(x: layer.bounds.minX, y: layer.bounds.minY)
+                            .contentTransition(.identity)
+                            .id(LayerIdentity(revision: state.particleMorphRevision,
+                                              text: state.fullLine, layer: layer.id))
+                            .transition(particleTransition(layerID: layer.id))
                     }
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
-                // Every submitted state explicitly chooses whether it may
-                // animate. Marquee/metadata/pause updates keep the same homes
-                // and disable animation instead of replaying glyph transitions.
+                // No per-layer animation override: non-lyric updates must be
+                // able to disable all transitions in this archived subtree.
                 .animation(state.particleMorphEnabled == true ? .interpolatingSpring(
                     mass: LiveLyricsParticlePhysics.mass,
                     stiffness: LiveLyricsParticlePhysics.stiffness,
@@ -227,6 +230,23 @@ private struct LockScreenLineParticles: View {
         .environment(\.layoutDirection, .leftToRight)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    private struct LayerIdentity: Hashable {
+        let revision: Int?
+        let text: String
+        let layer: Int
+    }
+
+    private func particleTransition(layerID: Int) -> AnyTransition {
+        let angle = LiveLyricsParticlePhysics.randomUnit(index: layerID, salt: 0) * 2 * .pi
+        let distance = 18 + LiveLyricsParticlePhysics.randomUnit(index: layerID, salt: 1) * 24
+        let x = CGFloat(cos(angle) * distance)
+        let y = CGFloat(sin(angle) * distance * 0.55)
+        return .asymmetric(
+            insertion: .offset(x: -x, y: -y).combined(with: .opacity),
+            removal: .offset(x: x, y: y).combined(with: .opacity)
+        )
     }
 }
 

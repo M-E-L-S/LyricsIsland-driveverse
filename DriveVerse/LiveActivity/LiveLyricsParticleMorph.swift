@@ -7,19 +7,6 @@ enum LiveLyricsParticlePhysics {
     static let stiffness = 144.0
     static let damping = 13.2
     static let settlingDuration: TimeInterval = 1.2
-    static let minimumCount = 1_600
-    static let maximumCount = 6_000
-    static let imageDensity = 0.24
-    static let diameter = 0.64
-    static let sizeVariance = 0.35
-
-    /// Keep a stable native point pool. Spread the site's density-dependent
-    /// visible count over its sorted ranks instead of recreating view identities.
-    static func isVisible(rank: Int, count: Int) -> Bool {
-        guard rank >= 0, rank < maximumCount, count > 0 else { return false }
-        let count = min(maximumCount, count)
-        return rank * count / maximumCount != (rank + 1) * count / maximumCount
-    }
 
     /// Fixed hash instead of Math.random: the same cloud must be identical
     /// when a separate extension process archives a non-lyric update.
