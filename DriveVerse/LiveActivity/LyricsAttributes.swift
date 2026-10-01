@@ -14,11 +14,9 @@ enum LiveLyricsLineEffect: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-/// Associate archived tiles with their lyric, rather than just their grid cell.
-/// Position ticks, marquee phases and playback changes keep this identity stable.
+/// Only the visible lyric/index can replace a particle cloud. Metadata,
+/// image refreshes, position ticks and marquee phases keep this identity stable.
 struct LiveLyricsParticleLineIdentity: Hashable {
-    let title: String
-    let artist: String
     let lineIndex: Int?
     let text: String
 }
@@ -26,9 +24,9 @@ struct LiveLyricsParticleLineIdentity: Hashable {
 /// Shared timing keeps line presentation and the first fill update in order.
 enum LiveLyricsAnimationTiming {
     static let lineTransitionDuration: TimeInterval = 0.35
-    static let particleDisperseDuration: TimeInterval = 0.3
+    static let particleDisperseDuration: TimeInterval = 0.4
     static let particleGatherDelay: TimeInterval = particleDisperseDuration + 0.02
-    static let particleGatherDuration: TimeInterval = 0.55
+    static let particleGatherDuration: TimeInterval = 0.65
     static let particleStaggerStep: TimeInterval = 0.012
 
     // Activity.update completion is not a display acknowledgement. Leave a
@@ -84,7 +82,7 @@ struct LyricsAttributes: ActivityAttributes {
         var lineEffect: LiveLyricsLineEffect? = nil
         var particleLineIdentity: LiveLyricsParticleLineIdentity {
             LiveLyricsParticleLineIdentity(
-                title: title, artist: artist, lineIndex: lineIndex,
+                lineIndex: lineIndex,
                 text: completedText + activeText + remainingText
             )
         }

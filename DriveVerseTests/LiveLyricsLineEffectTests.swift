@@ -8,7 +8,7 @@ import Testing
             >= LiveLyricsAnimationTiming.particleDisperseDuration)
         let total = LiveLyricsAnimationTiming.particleGatherDelay
             + LiveLyricsAnimationTiming.particleGatherDuration
-            + 5 * LiveLyricsAnimationTiming.particleStaggerStep
+            + 7 * LiveLyricsAnimationTiming.particleStaggerStep
         #expect(total < 2)
     }
 }
@@ -69,7 +69,7 @@ import Testing
         #expect(!decoded.usesLineParticles)
     }
 
-    @Test func nonLyricUpdatesDoNotRestartTileTransitions() {
+    @Test func nonLyricUpdatesDoNotRestartParticleTransitions() {
         var content = state()
         content.lineEffect = .particles
         let identity = content.particleLineIdentity
@@ -80,6 +80,9 @@ import Testing
         content.isPlaying = false
         content.secondaryLine = "translation"
         content.nextLine = "updated next line"
+        content.title = "Refined title"
+        content.artist = "Refined artist"
+        content.artworkData = Data([1, 2, 3])
         #expect(content.particleLineIdentity == identity)
     }
 
@@ -90,12 +93,6 @@ import Testing
         #expect(changed.particleLineIdentity != content.particleLineIdentity)
         changed = content
         changed.lineIndex = 1
-        #expect(changed.particleLineIdentity != content.particleLineIdentity)
-        changed = content
-        changed.title = "Another Song"
-        #expect(changed.particleLineIdentity != content.particleLineIdentity)
-        changed = content
-        changed.artist = "Another Artist"
         #expect(changed.particleLineIdentity != content.particleLineIdentity)
     }
 
