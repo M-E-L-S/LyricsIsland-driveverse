@@ -1,5 +1,9 @@
 import Foundation
 import SwiftUI
+#if canImport(UIKit)
+import CoreText
+import UIKit
+#endif
 
 /// Apple Music-style word timing: each glyph is gradually filled from its
 /// leading edge instead of switching the entire word on at once. Completed
@@ -10,6 +14,7 @@ struct WordTimedText: View {
     let playback: NowPlayingState
     let timingOffsetMs: Int
     let options: LyricsDisplayOptions
+    let fontSize: CGFloat
     var completedColor: Color = .primary
     var activeColor: Color = .primary
     var pendingColor: Color = .secondary.opacity(0.45)
@@ -21,6 +26,12 @@ struct WordTimedText: View {
             let renderedWords = words.map {
                 ChineseTextConverter.convert($0.original, using: options.chineseConversion)
             }
+            let finalLetterLayout: TailLetterLayout? = {
+                guard let lastWord = words.last,
+                      lastWord.endTimeMs - lastWord.startTimeMs >= 1_200,
+                      let renderedLastWord = renderedWords.last else { return nil }
+                return TailLetterLayout.make(text: renderedLastWord, fontSize: fontSize)
+            }()
             let accessibilityText = LyricsTextRenderer.primary(for: line, options: options)
             TimelineView(.animation(minimumInterval: 1.0 / 30.0,
                                     paused: !playback.isPlaying)) { timeline in
@@ -52,6 +63,7 @@ struct WordTimedText: View {
                                     previewIntensity: preview,
                                     isLastWord: index == words.count - 1,
                                     durationMs: max(0, word.endTimeMs - word.startTimeMs),
+                                    tailLetterLayout: index == words.count - 1 ? finalLetterLayout : nil,
                                     completedColor: completedColor,
                                     activeColor: activeColor,
                                     pendingColor: pendingColor
@@ -140,6 +152,7 @@ private struct ProgressiveWordFill: View {
     let previewIntensity: Double
     let isLastWord: Bool
     let durationMs: Int
+    let tailLetterLayout: TailLetterLayout?
     let completedColor: Color
     let activeColor: Color
     let pendingColor: Color
@@ -150,10 +163,15 @@ private struct ProgressiveWordFill: View {
                 .foregroundStyle(pendingColor)
 
             if fraction > 0 || isActive {
-                Text(text)
-                    .foregroundStyle(fraction >= 1 ? completedColor : activeColor)
-                    .mask { fillMask }
-                    .opacity(fillOnsetOpacity)
+                if isLongTail, let tailLetterLayout {
+                    letterTailFill(tailLetterLayout)
+                        .opacity(fillOnsetOpacity)
+                } else {
+                    Text(text)
+                        .foregroundStyle(fraction >= 1 ? completedColor : activeColor)
+                        .mask { fillMask }
+                        .opacity(fillOnsetOpacity)
+                }
             }
 
             if previewIntensity > 0 {
@@ -173,7 +191,7 @@ private struct ProgressiveWordFill: View {
                     }
             }
 
-            if isLongTail, isActive {
+            if isLongTail, isActive, tailLetterLayout == nil {
                 Text(text)
                     .foregroundStyle(Color.white.opacity(tailGlow * 0.72))
                     .mask { fillMask }
@@ -184,7 +202,49 @@ private struct ProgressiveWordFill: View {
                     .mask { fillMask }
             }
         }
-        .offset(y: -(2.2 * easedLift + tailLift))
+        .offset(y: -(2.2 * easedLift + (tailLetterLayout == nil ? tailLift : 0)))
+    }
+
+    private func letterTailFill(_ layout: TailLetterLayout) -> some View {
+        // Each slice draws the same shaped word; masks isolate letters without
+        // changing the token's width or kerning when the tail animation starts.
+        ZStack(alignment: .leading) {
+            ForEach(layout.slices) { slice in
+                let glow = letterGlow(for: slice, count: layout.letterCount)
+                Text(text)
+                    .foregroundStyle(fraction >= 1 ? completedColor : activeColor)
+                    .mask { fillMask }
+                    .mask { letterMask(for: slice, layout: layout) }
+                    .offset(y: -letterLift(for: slice, count: layout.letterCount))
+                    .shadow(color: .white.opacity(glow * 0.72), radius: 7)
+                    .shadow(color: .white.opacity(glow * 0.32), radius: 0)
+            }
+        }
+    }
+
+    private func letterMask(for slice: TailLetterSlice, layout: TailLetterLayout) -> some View {
+        GeometryReader { geometry in
+            let scale = geometry.size.width / max(1, layout.width)
+            Rectangle()
+                .frame(width: max(1, (slice.end - slice.start) * scale + 1),
+                       height: geometry.size.height)
+                .position(x: (slice.start + slice.end) * scale / 2,
+                          y: geometry.size.height / 2)
+        }
+    }
+
+    private func letterLift(for slice: TailLetterSlice, count: Int) -> Double {
+        6.2 * pow(sin(letterPhase(for: slice, count: count) * .pi), 1.3)
+    }
+
+    private func letterGlow(for slice: TailLetterSlice, count: Int) -> Double {
+        pow(sin(letterPhase(for: slice, count: count) * .pi), 1.2) * 0.88
+    }
+
+    private func letterPhase(for slice: TailLetterSlice, count: Int) -> Double {
+        guard let letterIndex = slice.letterIndex else { return 0 }
+        let start = Double(letterIndex) / Double(max(1, count - 1)) * 0.65
+        return min(1, max(0, (tailProgress - start) / 0.35))
     }
 
     @ViewBuilder
@@ -246,6 +306,69 @@ private struct ProgressiveWordFill: View {
 
     private var tailGlow: Double {
         pow(sin(tailProgress * .pi), 1.2) * 0.88
+    }
+}
+
+private struct TailLetterSlice: Identifiable {
+    let id: Int
+    let start: CGFloat
+    let end: CGFloat
+    let letterIndex: Int?
+}
+
+private struct TailLetterLayout {
+    let width: CGFloat
+    let slices: [TailLetterSlice]
+    let letterCount: Int
+
+    static func make(text: String, fontSize: CGFloat) -> TailLetterLayout? {
+#if canImport(UIKit)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.unicodeScalars.allSatisfy(\.isASCII),
+              !trimmed.isEmpty,
+              trimmed.unicodeScalars.allSatisfy({ scalar in
+                  CharacterSet.letters.contains(scalar)
+                      || CharacterSet.punctuationCharacters.contains(scalar)
+              }) else { return nil }
+
+        let letterCount = trimmed.unicodeScalars.filter {
+            CharacterSet.letters.contains($0)
+        }.count
+        guard (5...24).contains(letterCount) else { return nil }
+
+        let font = UIFont.systemFont(ofSize: fontSize, weight: .bold)
+        let attributed = NSAttributedString(string: text, attributes: [.font: font])
+        let line = CTLineCreateWithAttributedString(attributed)
+        let width = max(
+            CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil)),
+            CTLineGetOffsetForStringIndex(line, text.utf16.count, nil)
+        )
+        guard width > 0 else { return nil }
+
+        var slices: [TailLetterSlice] = []
+        var utf16Index = 0
+        var nextLetterIndex = 0
+        for (index, character) in text.enumerated() {
+            let characterText = String(character)
+            let nextUTF16Index = utf16Index + characterText.utf16.count
+            let start = CTLineGetOffsetForStringIndex(line, utf16Index, nil)
+            let end = CTLineGetOffsetForStringIndex(line, nextUTF16Index, nil)
+            let isLetter = characterText.unicodeScalars.allSatisfy {
+                CharacterSet.letters.contains($0)
+            }
+            slices.append(TailLetterSlice(
+                id: index,
+                start: min(start, end),
+                end: max(start, end),
+                letterIndex: isLetter ? nextLetterIndex : nil
+            ))
+            if isLetter { nextLetterIndex += 1 }
+            utf16Index = nextUTF16Index
+        }
+        return TailLetterLayout(width: width, slices: slices, letterCount: letterCount)
+#else
+        return nil
+#endif
     }
 }
 

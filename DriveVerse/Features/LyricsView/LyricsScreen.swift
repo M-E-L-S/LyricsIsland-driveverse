@@ -516,6 +516,7 @@ struct SyncedLyricsView: View {
                         playback: playback,
                         timingOffsetMs: timingOffsetMs,
                         options: options,
+                        fontSize: baseLyricSize * fontScale,
                         completedColor: .white,
                         activeColor: .white,
                         pendingColor: .white.opacity(0.34)
@@ -583,7 +584,7 @@ struct SyncedLyricsView: View {
             start = line.startTimeMs + max(4_800, Int(Double(interval) * 0.68))
         }
 
-        guard nextStart - start >= 2_400 else { return nil }
+        guard nextStart - start >= 3_600 else { return nil }
         return BreathingGap(startTimeMs: start, endTimeMs: nextStart)
     }
 
@@ -616,7 +617,7 @@ private struct LyricPullTiming {
     let followDuration: Double
     let stagger: Double
 
-    static let standard = LyricPullTiming(followDuration: 1.0)
+    static let standard = LyricPullTiming(followDuration: 0.70)
 
     init(followDuration: Double) {
         self.followDuration = followDuration
@@ -634,9 +635,9 @@ private struct LyricPullTiming {
         let nextIntervalMs = index + 1 < lines.count
             ? max(0, lines[index + 1].startTimeMs - lines[index].startTimeMs)
             : 1_500
-        // Short lines can finish sooner; long holds never stretch the pull
-        // beyond one second for the active row.
-        let followDuration = min(1.0, max(0.58, Double(nextIntervalMs) / 1_000 * 0.72))
+        // Keep the same damped curve while capping the slowest active-row
+        // follow at 0.7 seconds. Short lines may still move faster.
+        let followDuration = min(0.70, max(0.48, Double(nextIntervalMs) / 1_000 * 0.72))
         return LyricPullTiming(followDuration: followDuration)
     }
 }
@@ -722,9 +723,9 @@ private struct BreathingRowID: Hashable {
 private struct BreathingDots: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private static let pulseDurationMs = 580.0
+    private static let pulseDurationMs = 1_100.0
+    private static let riseDurationMs = 520.0
     private static let exitDurationMs = 240.0
-    private static let holdBeforeExitMs = 180.0
 
     let startTimeMs: Int
     let endTimeMs: Int
@@ -774,9 +775,7 @@ private struct BreathingDots: View {
     ) {
         let duration = Double(max(1, endTimeMs - startTimeMs))
         let elapsed = Double(position - startTimeMs)
-        let pulseSpacing = max(0, (
-            duration - Self.exitDurationMs - Self.holdBeforeExitMs - Self.pulseDurationMs
-        ) / 2)
+        let pulseSpacing = max(0, (duration - Self.exitDurationMs - Self.riseDurationMs) / 2)
 
         if position < startTimeMs || position >= endTimeMs {
             return (0, 16, 0.86, elapsed, pulseSpacing)
@@ -788,30 +787,34 @@ private struct BreathingDots: View {
         let exitStart = duration - Self.exitDurationMs
         if elapsed >= exitStart {
             let exit = min(1, max(0, (elapsed - exitStart) / Self.exitDurationMs))
-            return (1 - smoothStep(exit), CGFloat(16 * exit * exit),
-                    CGFloat(1 - 0.14 * exit), elapsed, pulseSpacing)
+            return (1 - smoothStep(exit), CGFloat(-7.5 + 23.5 * exit * exit),
+                    CGFloat(1.05 - 0.19 * exit), elapsed, pulseSpacing)
         }
 
-        let lift = (0..<3).map { index in
+        let firstTwoLifts = (0..<2).map { index in
             pulseLift(at: elapsed - Double(index) * pulseSpacing)
         }.max() ?? 0
-        let entrance = smoothStep(min(1, max(0, elapsed / 180)))
+        let finalRise = smoothStep(min(1, max(0,
+            (elapsed - 2 * pulseSpacing) / Self.riseDurationMs
+        )))
+        let lift = max(firstTwoLifts, finalRise)
+        let entrance = smoothStep(min(1, max(0, elapsed / 250)))
         return (entrance, -CGFloat(7.5 * lift), CGFloat(1 + 0.05 * lift),
                 elapsed, pulseSpacing)
     }
 
     private func pulseLift(at elapsed: Double) -> Double {
         guard elapsed >= 0, elapsed < Self.pulseDurationMs else { return 0 }
-        let riseDuration = Self.pulseDurationMs * 0.42
-        if elapsed < riseDuration {
-            return smoothStep(elapsed / riseDuration)
+        if elapsed < Self.riseDurationMs {
+            return smoothStep(elapsed / Self.riseDurationMs)
         }
-        return 1 - smoothStep((elapsed - riseDuration) / (Self.pulseDurationMs - riseDuration))
+        return 1 - smoothStep(
+            (elapsed - Self.riseDurationMs) / (Self.pulseDurationMs - Self.riseDurationMs)
+        )
     }
 
     private func illumination(for index: Int, elapsed: Double, pulseSpacing: Double) -> Double {
-        let riseDuration = Self.pulseDurationMs * 0.42
-        let rise = (elapsed - Double(index) * pulseSpacing) / riseDuration
+        let rise = (elapsed - Double(index) * pulseSpacing) / Self.riseDurationMs
         return smoothStep(min(1, max(0, rise)))
     }
 
