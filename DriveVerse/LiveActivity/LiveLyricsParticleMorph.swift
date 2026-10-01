@@ -27,27 +27,20 @@ struct LiveLyricsParticleMorphPlan: Equatable {
 
 /// The homepage's lyric-change handler compares text, not line indices. Keep
 /// this ledger independent of the Activity policy/reset and marquee phases.
-/// Planning is read-only: a cancelled or coalesced proposal was never visible.
 struct LiveLyricsParticleMorphTracker {
     private var text: String?
     private var revision = 0
 
-    func plan(text incoming: String, animate: Bool) -> LiveLyricsParticleMorphPlan {
+    mutating func prepare(text incoming: String, animate: Bool) -> LiveLyricsParticleMorphPlan {
         guard incoming != text else {
             return LiveLyricsParticleMorphPlan(revision: revision, previousText: nil, animates: false)
         }
-        let animates = animate && text?.isEmpty == false && !incoming.isEmpty
-        return LiveLyricsParticleMorphPlan(
-            revision: revision + 1, previousText: animates ? text : nil, animates: animates
-        )
-    }
-
-    /// Call immediately before Activity.update, after cancellation checks.
-    /// Only content actually submitted to ActivityKit advances the ledger.
-    mutating func recordSubmission(text incoming: String, animate: Bool) -> LiveLyricsParticleMorphPlan {
-        let result = plan(text: incoming, animate: animate)
+        let outgoing = text
         text = incoming
-        revision = result.revision
-        return result
+        revision += 1
+        let animates = animate && outgoing?.isEmpty == false && !incoming.isEmpty
+        return LiveLyricsParticleMorphPlan(
+            revision: revision, previousText: animates ? outgoing : nil, animates: animates
+        )
     }
 }

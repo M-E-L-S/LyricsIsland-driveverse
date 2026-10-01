@@ -14,94 +14,144 @@ import Testing
         )
     }
 
-    @Test func denseDotsNeverCreateThousandsOfNativeViews() {
+    @Test func everyLineStaysWithinTheActivityArchiveBudget() {
+        // Regression for the 6000-native-view version that stopped both the
+        // lock screen and island. Dot density must never control view count.
         #expect(LiveLyricsParticleLayout.maximumLayerCount <= 64)
         #expect(LiveLyricsParticleLayout.maximumLayerPixels * 4 <= 2_000_000)
         for index in 0..<12 {
             let result = raster(String(repeating: "细粒子歌词 \(index) ", count: index + 1),
                                 width: 330, height: index.isMultiple(of: 2) ? 25 : 52)
-            #expect(result.particleCount == 10_000)
-            #expect(result.layers.count == 64)
+            #expect(!result.layers.isEmpty)
+            #expect(result.layers.count <= 64)
             #expect(result.bitmapBytes <= 2_000_000)
         }
     }
 
-    @Test func newLyricsRetainAllSortedRankIdentitiesAndRetargetHomes() {
-        let first = raster("旧句粒子直接移动到新句")
-        let next = raster("新的歌词重新排列", height: 25)
-        #expect(first.layers.map(\.id) == Array(0..<64))
-        #expect(first.layers.map(\.id) == next.layers.map(\.id))
-        #expect(first.layers.map(\.anchor) != next.layers.map(\.anchor))
-        for (a, b) in zip(first.layers, first.layers.dropFirst()) {
-            #expect(a.anchor.x <= b.anchor.x)
-        }
-        for layer in first.layers {
-            #expect(abs(layer.localBounds.minX + layer.anchor.x - layer.bounds.minX) < 0.0001)
-            #expect(abs(layer.localBounds.minY + layer.anchor.y - layer.bounds.minY) < 0.0001)
-        }
-    }
-
-    @Test func sameTextRefreshReusesHomesAndImageResources() {
-        let first = raster("相同歌词不要重新启动动画")
-        let refresh = raster("相同歌词不要重新启动动画")
-        #expect(first.layers.map(\.anchor) == refresh.layers.map(\.anchor))
+    @Test func sameTextRefreshReusesTheImageResourcesAndLayerIDs() {
+        let first = raster("相同歌词不要重新归档大量粒子")
+        let refresh = raster("相同歌词不要重新归档大量粒子")
+        #expect(first.layers.map(\.id) == refresh.layers.map(\.id))
+        #expect(first.layers.map(\.bounds) == refresh.layers.map(\.bounds))
         for (before, after) in zip(first.layers, refresh.layers) {
             #expect(before.image === after.image)
         }
-        _ = raster("让缓存淘汰之前的歌词")
-        let rebuilt = raster("相同歌词不要重新启动动画")
-        #expect(first.layers.map(\.anchor) == rebuilt.layers.map(\.anchor))
-        #expect(first.layers.map(\.bounds) == rebuilt.layers.map(\.bounds))
     }
 
-    @Test func particleBuffersArePureWhiteWithOpaqueCores() throws {
-        for result in [raster("纯白微粒保持清晰", height: 25),
-                       raster("动态字体的纯白粒子", width: 600, height: 200, fontSize: 80)] {
-            var opaquePixels = 0
-            var allPixelsAreWhite = true
-            for layer in result.layers {
-                let image = try #require(layer.image.cgImage)
-                let data = try #require(image.dataProvider?.data)
-                let bytes = try #require(CFDataGetBytePtr(data))
-                for y in 0..<image.height {
-                    for x in 0..<image.width {
-                        let offset = y * image.bytesPerRow + x * 4
-                        let alpha = bytes[offset + 3]
-                        // Premultiplied RGB equals alpha: no grey/color tint.
-                        allPixelsAreWhite = allPixelsAreWhite
-                            && bytes[offset] == alpha
-                            && bytes[offset + 1] == alpha
-                            && bytes[offset + 2] == alpha
-                        if alpha == 255 { opaquePixels += 1 }
-                    }
+    @Test func denseSamplingDoesNotDiscardLongLyricStrokes() {
+        let first = raster("字形轮廓必须完整保留字形轮廓")
+        #expect(first.particleCount > 900)
+        #expect(first.scale == 3)
+        #expect(!first.layers.isEmpty)
+        #expect(first.layers.count <= LiveLyricsParticleLayout.maximumLayerCount)
+        #expect(first.layers.map(\.bounds) == raster("字形轮廓必须完整保留字形轮廓").layers.map(\.bounds))
+        #expect(Set(first.layers.map(\.id)).count == first.layers.count)
+    }
+
+    @Test func wrappingAndTruncationKeepParticlesInTheTwoVisibleRows() {
+        let layers = raster(String(repeating: "你好世界", count: 25), width: 110).layers
+        #expect(!layers.isEmpty)
+        #expect(layers.count <= LiveLyricsParticleLayout.maximumLayerCount)
+        #expect(layers.contains { $0.bounds.minY < 25 })
+        #expect(layers.contains { $0.bounds.maxY > 25 })
+        #expect(layers.allSatisfy { $0.bounds.minX >= 0 && $0.bounds.maxX <= 110 && $0.bounds.maxY <= 50 })
+    }
+
+    @Test func rightToLeftGlyphsStayAtTheTrailingSideOfTheBitmap() {
+        let layers = raster("שלום", rightToLeft: true).layers
+        #expect(!layers.isEmpty)
+        #expect(layers.allSatisfy { $0.bounds.minX > 150 && $0.bounds.maxX <= 300 })
+    }
+
+    @Test func supportsEmojiAndCombiningCharacters() {
+        let layers = raster("👨‍👩‍👧‍👦e\u{301}你").layers
+        #expect(!layers.isEmpty)
+        #expect(layers.allSatisfy { $0.bounds.minX.isFinite && $0.bounds.minY.isFinite })
+    }
+
+    @Test func layoutCacheRespectsGeometryFontAndTextChanges() {
+        let text = "粒子在换行时重新聚合成文字"
+        let original = raster(text)
+        #expect(original.layers.map(\.bounds) != raster(text, width: 110).layers.map(\.bounds))
+        #expect(original.inkPixelCount != raster(text, fontSize: 26).inkPixelCount)
+        #expect(original.inkPixelCount != raster("切换到下一行").inkPixelCount)
+        #expect(original.scale != raster(text, displayScale: 2).scale)
+        #expect(original.inkPixelCount == raster(text).inkPixelCount)
+    }
+
+    @Test func sparseLayersRetainEveryAntialiasedInkPixelAndWhiteCores() throws {
+        let result = raster("纯白 W", width: 310.25, fontSize: 32)
+        var restoredInk = 0
+        var opaqueInk = 0
+        var allInkIsWhite = true
+        for layer in result.layers {
+            let image = try #require(layer.image.cgImage)
+            let bitmap = try #require(CGContext(
+                data: nil, width: image.width, height: image.height,
+                bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                    | CGBitmapInfo.byteOrder32Big.rawValue
+            ))
+            bitmap.interpolationQuality = .none
+            bitmap.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            let data = try #require(bitmap.data).assumingMemoryBound(to: UInt8.self)
+            for y in 0..<image.height {
+                for x in 0..<image.width where data[y * bitmap.bytesPerRow + x * 4 + 3] > 0 {
+                    restoredInk += 1
+                    let pixel = y * bitmap.bytesPerRow + x * 4
+                    let alpha = data[pixel + 3]
+                    allInkIsWhite = allInkIsWhite && data[pixel] == alpha
+                        && data[pixel + 1] == alpha && data[pixel + 2] == alpha
+                    if alpha == 255 { opaqueInk += 1 }
                 }
             }
-            #expect(allPixelsAreWhite)
-            #expect(opaquePixels > 100)
         }
-        #expect(LiveLyricsParticleLayout.particleDiameter < 0.8)
+        #expect(result.inkPixelCount > 0)
+        #expect(restoredInk == result.inkPixelCount)
+        #expect(allInkIsWhite)
+        // Thick glyphs must have white cores, not grain-dimmed interiors.
+        #expect(opaqueInk > restoredInk / 2)
     }
 
-    @Test func dynamicRowsAndRTLKeepTheOriginalTextGeometry() {
-        let twoRows = raster(String(repeating: "你好世界", count: 25), width: 110)
-        #expect(twoRows.layers.contains { $0.bounds.maxY > 25 })
-        #expect(twoRows.layers.allSatisfy { $0.bounds.minX >= 0 && $0.bounds.maxX <= 110.001 && $0.bounds.maxY <= 50.001 })
-        let rtl = raster("שלום", rightToLeft: true)
-        #expect(rtl.layers.allSatisfy { $0.anchor.x > 150 && $0.anchor.x < 300 })
+    @Test func movingLayersContainSparseMicrodotsInsteadOfGlyphChunks() throws {
+        let result = raster("粒子拨散之后再重聚成清晰的歌词")
+        var examined = 0
+        for layer in result.layers {
+            let image = try #require(layer.image.cgImage)
+            guard image.width >= 24, image.height >= 24 else { continue }
+            let bitmap = try #require(CGContext(
+                data: nil, width: image.width, height: image.height,
+                bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                    | CGBitmapInfo.byteOrder32Big.rawValue
+            ))
+            bitmap.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            let data = try #require(bitmap.data).assumingMemoryBound(to: UInt8.self)
+            var ink = 0
+            for y in 0..<image.height {
+                for x in 0..<image.width where data[y * bitmap.bytesPerRow + x * 4 + 3] > 0 {
+                    ink += 1
+                }
+            }
+            // Each large moving image is mostly empty, with dispersed dots.
+            #expect(Double(ink) / Double(image.width * image.height) < 0.4)
+            examined += 1
+        }
+        #expect(examined >= LiveLyricsParticleLayout.groupsPerRegion)
     }
 
-    @Test func largeTypeAndEmojiStayWithinTheBitmapBudget() {
-        let cases: [(String, CGFloat, CGFloat, CGFloat)] = [
-            ("动态字体也要保留完整轮廓", 600.0, 200.0, 80.0),
-            ("极端尺寸也必须保持更新", 2048.0, 512.0, 150.0),
-            ("👨‍👩‍👧‍👦e\u{301}你", 300.0, 50.0, 20.0)
-        ]
-        for (text, width, height, font) in cases {
-            let result = raster(text, width: width, height: height, fontSize: font)
-            #expect(result.layers.count == 64)
-            #expect(result.bitmapBytes <= 2_000_000)
-            #expect(result.layers.allSatisfy { $0.anchor.x.isFinite && $0.anchor.y.isFinite })
+    @Test func largeTypeRespectsCombinedBitmapAndViewBudgets() throws {
+        let result = raster("动态字体也要保留完整轮廓", width: 600, height: 200, fontSize: 80)
+        #expect(!result.layers.isEmpty)
+        #expect(result.layers.count <= LiveLyricsParticleLayout.maximumLayerCount)
+        let imagePixels = try result.layers.reduce(0) { sum, layer in
+            let image = try #require(layer.image.cgImage)
+            return sum + image.width * image.height
         }
+        #expect(imagePixels <= LiveLyricsParticleLayout.maximumLayerPixels)
+        #expect(result.bitmapBytes <= 2_000_000)
     }
 
     @Test func emptyInkAndInvalidGeometryHaveNoParticles() {

@@ -168,9 +168,9 @@ private struct LockScreenLineText: View {
     }
 }
 
-/// Keep each sampled cohort's moving home stable, but key its glyph bitmap to
-/// the lyric. The built-in bitmap transition survives WidgetKit archiving;
-/// both glyphs travel with the same home while they hand off simultaneously.
+/// Each native image holds many disconnected microdots. Keep the archived
+/// view tree bounded; the lock screen and island share the rendering extension.
+/// A lyric revision replaces the layers once, while other updates retain them.
 private struct LockScreenLineParticles: View {
     let state: LyricsAttributes.ContentState
     @Environment(\.layoutDirection) private var layoutDirection
@@ -201,35 +201,28 @@ private struct LockScreenLineParticles: View {
             } else {
                 ZStack(alignment: .topLeading) {
                     ForEach(raster.layers) { layer in
-                        // The cohort survives a lyric change. Its outgoing and
-                        // incoming glyphs share the same moving coordinate frame.
-                        ZStack(alignment: .topLeading) {
-                            Image(uiImage: layer.image)
-                                .renderingMode(.template)
-                                .resizable()
-                                .interpolation(.high)
-                                .foregroundStyle(.white)
-                                .frame(width: layer.bounds.width, height: layer.bounds.height)
-                                .offset(x: layer.localBounds.minX, y: layer.localBounds.minY)
-                                .contentTransition(.identity)
-                                .id(GlyphIdentity(line: state.particleLineIdentity, layer: layer.id))
-                                .transition(.opacity)
-                        }
-                        .frame(width: geometry.size.width, height: geometry.size.height,
-                               alignment: .topLeading)
-                        .offset(x: layer.anchor.x, y: layer.anchor.y)
+                        Image(uiImage: layer.image)
+                            .renderingMode(.template)
+                            .resizable()
+                            .interpolation(.high)
+                            .foregroundStyle(.white)
+                            .frame(width: layer.bounds.width, height: layer.bounds.height)
+                            .offset(x: layer.bounds.minX, y: layer.bounds.minY)
+                            .contentTransition(.identity)
+                            .id(LayerIdentity(revision: state.particleMorphRevision,
+                                              text: state.fullLine, layer: layer.id))
+                            .transition(particleTransition(layerID: layer.id))
                     }
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
-                // Animate only glyph changes. An update-specific marker can
-                // be lost when WidgetKit coalesces a lyric with metadata;
-                // those updates must neither cancel nor replay this transition.
-                .animation(state.isPlaying ? .interpolatingSpring(
+                // No per-layer animation override: non-lyric updates must be
+                // able to disable all transitions in this archived subtree.
+                .animation(state.particleMorphEnabled == true ? .interpolatingSpring(
                     mass: LiveLyricsParticlePhysics.mass,
                     stiffness: LiveLyricsParticlePhysics.stiffness,
                     damping: LiveLyricsParticlePhysics.damping,
                     initialVelocity: 0
-                ) : nil, value: state.particleLineIdentity)
+                ) : nil, value: state)
             }
 #else
             Text(state.fullLine)
@@ -245,9 +238,21 @@ private struct LockScreenLineParticles: View {
         .accessibilityHidden(true)
     }
 
-    private struct GlyphIdentity: Hashable {
-        let line: LiveLyricsParticleLineIdentity
+    private struct LayerIdentity: Hashable {
+        let revision: Int?
+        let text: String
         let layer: Int
+    }
+
+    private func particleTransition(layerID: Int) -> AnyTransition {
+        let angle = LiveLyricsParticlePhysics.randomUnit(index: layerID, salt: 0) * 2 * .pi
+        let distance = 18 + LiveLyricsParticlePhysics.randomUnit(index: layerID, salt: 1) * 24
+        let x = CGFloat(cos(angle) * distance)
+        let y = CGFloat(sin(angle) * distance * 0.55)
+        // Both glyphs use the same displaced endpoint and the parent's
+        // single spring. Their outgoing/incoming particles overlap in time
+        // and space, without opposite entry/exit paths or a delayed phase.
+        return .offset(x: x, y: y).combined(with: .opacity)
     }
 }
 
@@ -500,23 +505,18 @@ private struct LivePlaybackControls: View {
     LyricsLiveActivity()
 } contentStates: {
     particlePreviewState("风吹过，留下清晰的文字", index: 0, revision: 1)
-    // Simulate WidgetKit coalescing the marked lyric update with metadata.
-    // Different glyphs must still animate when the transient marker is false.
-    particlePreviewState("同一批白色粒子连续移向下一句的新位置", index: 1, revision: 2)
-    particlePreviewState("同一批白色粒子连续移向下一句的新位置", index: 1, revision: 2, marqueeAtEnd: true)
-    particlePreviewState("同一批白色粒子连续移向下一句的新位置", index: 1,
+    particlePreviewState("新旧歌词的细小白色粒子同时交接", index: 1, revision: 2, animates: true)
+    particlePreviewState("新旧歌词的细小白色粒子同时交接", index: 1, revision: 2, marqueeAtEnd: true)
+    particlePreviewState("新旧歌词的细小白色粒子同时交接", index: 1,
                          revision: 2, marqueeAtEnd: true, artist: "Metadata refresh")
-    particlePreviewState("同一批白色粒子连续移向下一句的新位置", index: 2, revision: 2)
+    particlePreviewState("新旧歌词的细小白色粒子同时交接", index: 2, revision: 2)
     particlePreviewState("风吹过，留下清晰的文字", index: 3, revision: 3, animates: true)
-    particlePreviewState("暂停时切换歌词", index: 4, revision: 4, isPlaying: false)
-    particlePreviewState("暂停时切换歌词", index: 4, revision: 4)
 }
 
 private func particlePreviewState(_ line: String, index: Int,
                                   revision: Int, animates: Bool = false,
                                   marqueeAtEnd: Bool = false,
-                                  artist: String = "DriveVerse",
-                                  isPlaying: Bool = true) -> LyricsAttributes.ContentState {
+                                  artist: String = "DriveVerse") -> LyricsAttributes.ContentState {
     LyricsAttributes.ContentState(
         title: "MELS", artist: artist, artworkData: nil,
         secondaryLine: "", nextLine: "",
@@ -525,7 +525,7 @@ private func particlePreviewState(_ line: String, index: Int,
         activeWordStartMs: 0, activeWordEndMs: 0,
         fillTarget: 0, fillAnimationDurationMs: 0,
         lineIndex: index, usesWordTiming: false, lineMarqueeAtEnd: marqueeAtEnd,
-        lineMarqueeDurationMs: 0, isPlaying: isPlaying, lineEffect: .particles,
+        lineMarqueeDurationMs: 0, isPlaying: true, lineEffect: .particles,
         particleMorphRevision: revision, particleMorphEnabled: animates
     )
 }

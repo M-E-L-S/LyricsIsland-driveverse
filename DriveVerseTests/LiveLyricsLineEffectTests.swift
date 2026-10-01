@@ -101,10 +101,10 @@ import Testing
 
     @Test func marqueeUpdateDisablesMorphAndPreservesItsRevision() throws {
         var tracker = LiveLyricsParticleMorphTracker()
-        _ = tracker.recordSubmission(text: "旧句", animate: false)
+        _ = tracker.prepare(text: "旧句", animate: false)
         var content = state()
         content.lineEffect = .particles
-        let plan = tracker.recordSubmission(text: content.particleLineIdentity.text, animate: true)
+        let plan = tracker.prepare(text: content.particleLineIdentity.text, animate: true)
         content.applyParticleMorph(plan)
         #expect(content.particleMorphEnabled == true)
         let revision = content.particleMorphRevision

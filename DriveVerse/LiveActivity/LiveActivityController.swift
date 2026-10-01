@@ -194,7 +194,7 @@ final class LiveActivityController {
             lineMarqueeAtEnd: lineMarqueeAtEnd,
             lineMarqueeDuration: lineMarqueeDuration
         )
-        let particlePlan = particleMorphTracker.plan(
+        let particlePlan = particleMorphTracker.prepare(
             text: content.particleLineIdentity.text,
             animate: content.usesLineParticles && state.isPlaying
         )
@@ -218,9 +218,7 @@ final class LiveActivityController {
             cancelPendingUpdate() // superseded by newer content
             let generation = wordFillGeneration
             Task { [weak self] in
-                guard let self, self.wordFillGeneration == generation,
-                      self.activity?.id == activity.id else { return }
-                let content = self.contentForSubmission(content)
+                guard let self, self.wordFillGeneration == generation else { return }
                 await activity.update(ActivityContent(state: content, staleDate: nil))
                 guard self.wordFillGeneration == generation,
                       self.activity?.id == activity.id else { return }
@@ -258,29 +256,12 @@ final class LiveActivityController {
         guard pendingTask == nil else { return } // armed — content already replaced
         pendingTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
-            guard !Task.isCancelled, let self, let proposed = self.pendingContent,
-                  self.activity?.id == activity.id else { return }
+            guard !Task.isCancelled, let self, let content = self.pendingContent else { return }
             self.pendingContent = nil
             self.pendingTask = nil
             self.throttle.noteSent(now: Date())
-            let content = self.contentForSubmission(proposed)
             await activity.update(ActivityContent(state: content, staleDate: nil))
         }
-    }
-
-    /// Recompute from the last submitted lyric, rather than consuming a change
-    /// in sync() before its asynchronous send can be cancelled or superseded.
-    private func contentForSubmission(
-        _ proposed: LyricsAttributes.ContentState
-    ) -> LyricsAttributes.ContentState {
-        var content = proposed
-        let plan = particleMorphTracker.recordSubmission(
-            text: content.particleLineIdentity.text,
-            animate: content.usesLineParticles && content.isPlaying
-        )
-        if content.usesLineParticles { content.applyParticleMorph(plan) }
-        latestContent = content
-        return content
     }
 
     private func cancelPendingUpdate() {
@@ -424,7 +405,7 @@ final class LiveActivityController {
                 lineMarqueeDurationMs: 0,
                 isPlaying: false
             )
-        let particlePlan = particleMorphTracker.plan(text: content.particleLineIdentity.text, animate: false)
+        let particlePlan = particleMorphTracker.prepare(text: content.particleLineIdentity.text, animate: false)
         if content.usesLineParticles { content.applyParticleMorph(particlePlan) }
         latestContent = content
         do {
@@ -433,7 +414,6 @@ final class LiveActivityController {
                 content: ActivityContent(state: content, staleDate: nil)
             )
             activity = requested
-            _ = particleMorphTracker.recordSubmission(text: content.particleLineIdentity.text, animate: false)
             watch(requested)
             throttle.noteSent(now: Date())
             if let state {
