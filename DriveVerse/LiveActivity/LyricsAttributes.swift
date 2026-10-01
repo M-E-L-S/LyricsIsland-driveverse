@@ -14,20 +14,15 @@ enum LiveLyricsLineEffect: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-/// Only the visible lyric/index can replace a particle cloud. Metadata,
+/// Only the visible lyric can replace a particle cloud. Metadata,
 /// image refreshes, position ticks and marquee phases keep this identity stable.
 struct LiveLyricsParticleLineIdentity: Hashable {
-    let lineIndex: Int?
     let text: String
 }
 
 /// Shared timing keeps line presentation and the first fill update in order.
 enum LiveLyricsAnimationTiming {
     static let lineTransitionDuration: TimeInterval = 0.35
-    static let particleDisperseDuration: TimeInterval = 0.4
-    static let particleGatherDelay: TimeInterval = particleDisperseDuration + 0.02
-    static let particleGatherDuration: TimeInterval = 0.65
-    static let particleStaggerStep: TimeInterval = 0.012
 
     // Activity.update completion is not a display acknowledgement. Leave a
     // short render allowance after the transition before sending its endpoint.
@@ -80,11 +75,23 @@ struct LyricsAttributes: ActivityAttributes {
         /// Optional for activities archived before the effect selector existed.
         /// A missing preference preserves the original text presentation.
         var lineEffect: LiveLyricsLineEffect? = nil
+        /// One revision per actual text change, preserved across all other
+        /// Activity updates. Only the first update may start its point morph.
+        var particleMorphRevision: Int? = nil
+        var particleMorphEnabled: Bool? = nil
         var particleLineIdentity: LiveLyricsParticleLineIdentity {
             LiveLyricsParticleLineIdentity(
-                lineIndex: lineIndex,
                 text: completedText + activeText + remainingText
             )
+        }
+
+        mutating func applyParticleMorph(_ plan: LiveLyricsParticleMorphPlan) {
+            particleMorphRevision = plan.revision
+            particleMorphEnabled = plan.animates
+        }
+
+        mutating func stopParticleMorph() {
+            particleMorphEnabled = false
         }
 
         var usesLineParticles: Bool {
@@ -113,6 +120,8 @@ struct LyricsAttributes: ActivityAttributes {
             case lineMarqueeDurationMs = "r"
             case isPlaying = "x"
             case lineEffect = "j"
+            case particleMorphRevision = "u"
+            case particleMorphEnabled = "y"
         }
     }
 }

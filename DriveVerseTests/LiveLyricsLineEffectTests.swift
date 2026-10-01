@@ -3,13 +3,13 @@ import Testing
 @testable import DriveVerse
 
 @Suite struct LiveLyricsParticleTimingTests {
-    @Test func nativeTransitionsDoNotOverlapAndStayWithinWidgetKitDurationLimit() {
-        #expect(LiveLyricsAnimationTiming.particleGatherDelay
-            >= LiveLyricsAnimationTiming.particleDisperseDuration)
-        let total = LiveLyricsAnimationTiming.particleGatherDelay
-            + LiveLyricsAnimationTiming.particleGatherDuration
-            + 7 * LiveLyricsAnimationTiming.particleStaggerStep
-        #expect(total < 2)
+    @Test func homepageSpringSettlesWithinWidgetKitDurationLimit() {
+        #expect(LiveLyricsParticlePhysics.stiffness == 60 * 2.4)
+        #expect(abs(LiveLyricsParticlePhysics.damping - (3 + 12 * 0.85)) < 0.0001)
+        #expect(LiveLyricsParticlePhysics.settlingDuration < 2)
+        let envelope = exp(-LiveLyricsParticlePhysics.damping / 2
+                           * LiveLyricsParticlePhysics.settlingDuration)
+        #expect(envelope < 0.001)
     }
 }
 
@@ -64,8 +64,11 @@ import Testing
         let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(object["j"] == nil)
         #expect(object["k"] == nil)
+        #expect(object["u"] == nil)
+        #expect(object["y"] == nil)
         let decoded = try JSONDecoder().decode(LyricsAttributes.ContentState.self, from: data)
         #expect(decoded.lineEffect == nil)
+        #expect(decoded.particleMorphEnabled == nil)
         #expect(!decoded.usesLineParticles)
     }
 
@@ -86,14 +89,33 @@ import Testing
         #expect(content.particleLineIdentity == identity)
     }
 
-    @Test func newGlyphsAndRepeatedLyricLinesReceiveNewIdentities() {
+    @Test func onlyDifferentGlyphsReceiveNewIdentities() {
         let content = state()
         var changed = content
         changed.completedText = "新的歌词"
         #expect(changed.particleLineIdentity != content.particleLineIdentity)
         changed = content
         changed.lineIndex = 1
-        #expect(changed.particleLineIdentity != content.particleLineIdentity)
+        #expect(changed.particleLineIdentity == content.particleLineIdentity)
+    }
+
+    @Test func marqueeUpdateDisablesMorphAndPreservesItsRevision() throws {
+        var tracker = LiveLyricsParticleMorphTracker()
+        _ = tracker.prepare(text: "旧句", animate: false)
+        var content = state()
+        content.lineEffect = .particles
+        let plan = tracker.prepare(text: content.particleLineIdentity.text, animate: true)
+        content.applyParticleMorph(plan)
+        #expect(content.particleMorphEnabled == true)
+        let revision = content.particleMorphRevision
+        content.lineMarqueeAtEnd = true
+        content.stopParticleMorph()
+        #expect(content.particleMorphEnabled == false)
+        #expect(content.particleMorphRevision == revision)
+        let decoded = try JSONDecoder().decode(LyricsAttributes.ContentState.self,
+                                               from: JSONEncoder().encode(content))
+        #expect(decoded.particleMorphEnabled == false)
+        #expect(decoded.particleMorphRevision == revision)
     }
 
     @Test func particlesRequireLineModeAndARealLyric() throws {

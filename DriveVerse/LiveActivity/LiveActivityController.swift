@@ -37,6 +37,7 @@ final class LiveActivityController {
     private var wordFillGeneration = UUID()
     private var pendingContent: LyricsAttributes.ContentState?
     private var latestContent: LyricsAttributes.ContentState?
+    private var particleMorphTracker = LiveLyricsParticleMorphTracker()
     private var lastSentTrackKey: String?
     private var lastSentLineIndex: Int?
     private var lastSentIsPlaying: Bool?
@@ -70,6 +71,8 @@ final class LiveActivityController {
     /// Display preferences can change without a track or line change.
     /// Reset deduplication so the newly rendered text reaches ActivityKit.
     func forceNextUpdate() {
+        // Keep the particle text ledger: a preference/metadata refresh must
+        // not treat the already-visible lyric as a fresh morph.
         policy.reset()
         lastSentTrackKey = nil
         lastSentLineIndex = nil
@@ -182,7 +185,7 @@ final class LiveActivityController {
         lastSentIsPlaying = state.isPlaying
         lastSentPositionMs = position?.positionMs ?? state.positionMs
         lastSentAt = now
-        let content = Self.content(
+        var content = Self.content(
             state: state,
             position: position,
             wordUpdatesEnabled: wordUpdatesEnabled,
@@ -191,6 +194,23 @@ final class LiveActivityController {
             lineMarqueeAtEnd: lineMarqueeAtEnd,
             lineMarqueeDuration: lineMarqueeDuration
         )
+        let particlePlan = particleMorphTracker.prepare(
+            text: content.particleLineIdentity.text,
+            animate: content.usesLineParticles && state.isPlaying
+        )
+        if content.usesLineParticles {
+            content.applyParticleMorph(particlePlan)
+            if particlePlan.animates {
+                // The compact island shares this ContentState. Its second
+                // update must not replace a still-running lock-screen morph.
+                lineMarqueeDelay = max(lineMarqueeDelay,
+                                      LiveLyricsParticlePhysics.settlingDuration + 0.15)
+                let available = Double(max(0, position?.currentLineRemainingMs ?? 2_300))
+                    / 1_000 - 0.25
+                lineMarqueeDuration = min(lineMarqueeDuration, max(0.12, available - lineMarqueeDelay))
+                content.lineMarqueeDurationMs = Int((lineMarqueeDuration * 1_000).rounded())
+            }
+        }
         latestContent = content
 
         switch throttle.decide(critical: critical, now: now) {
@@ -268,6 +288,7 @@ final class LiveActivityController {
                   var content = self.latestContent else { return }
             self.lineMarqueeAtEnd = true
             content.lineMarqueeAtEnd = true
+            if content.usesLineParticles { content.stopParticleMorph() }
             self.latestContent = content
             self.throttle.noteSent(now: Date())
             await activity.update(ActivityContent(state: content, staleDate: nil))
@@ -356,11 +377,12 @@ final class LiveActivityController {
     /// content matters because a background app can only *update* from then on.
     func beginSession(state: NowPlayingState?, position: LyricsPosition?) {
         guard activity == nil, ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        particleMorphTracker = LiveLyricsParticleMorphTracker()
         lineMarqueeAtEnd = false
         let timing = Self.marqueeTiming(remainingMs: position?.currentLineRemainingMs)
         lineMarqueeDelay = timing.delay
         lineMarqueeDuration = timing.duration
-        let content = state.map {
+        var content = state.map {
             Self.content(
                 state: $0,
                 position: position,
@@ -383,6 +405,8 @@ final class LiveActivityController {
                 lineMarqueeDurationMs: 0,
                 isPlaying: false
             )
+        let particlePlan = particleMorphTracker.prepare(text: content.particleLineIdentity.text, animate: false)
+        if content.usesLineParticles { content.applyParticleMorph(particlePlan) }
         latestContent = content
         do {
             let requested = try Activity.request(
@@ -453,6 +477,7 @@ final class LiveActivityController {
                     self.lastSentAt = nil
                     self.lineMarqueeAtEnd = false
                     self.latestContent = nil
+                    self.particleMorphTracker = LiveLyricsParticleMorphTracker()
                     self.cancelPendingUpdate()
                     self.cancelLineMarquee()
                     self.cancelWordFill()
@@ -479,6 +504,7 @@ final class LiveActivityController {
         lastSentAt = nil
         lineMarqueeAtEnd = false
         latestContent = nil
+        particleMorphTracker = LiveLyricsParticleMorphTracker()
         await activity.end(nil, dismissalPolicy: .immediate)
     }
 
