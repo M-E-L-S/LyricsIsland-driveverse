@@ -318,18 +318,101 @@ private struct LiveWordText: View {
     @Environment(\.layoutDirection) private var layoutDirection
 
     var body: some View {
+        if state.usesWordTiming, state.wordEffect == .classic {
+            Text(state.completedText).foregroundColor(.primary)
+                + Text(state.activeText).foregroundColor(.accentColor)
+                + Text(state.remainingText).foregroundColor(.secondary.opacity(0.55))
+        } else {
+            filledBody
+        }
+    }
+
+    private var filledBody: some View {
         Text(state.fullLine)
             .foregroundStyle(baseColor)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .mask { staticTextMask }
             .overlay(alignment: .topLeading) {
                 Text(state.fullLine)
                     .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .mask { fillMask }
+                    .mask { staticTextMask }
                     .opacity(state.usesWordTiming ? 1 : 0)
                     .accessibilityHidden(true)
             }
+            .overlay(alignment: .topLeading) { tailOverlay }
     }
+
+    private var staticTextMask: some View {
+        GeometryReader { geometry in
+#if canImport(UIKit)
+            if let tail = tailGeometry(size: geometry.size) {
+                Path { path in
+                    path.addRect(CGRect(origin: .zero, size: geometry.size))
+                    for bounds in tail.wordBounds { path.addRect(bounds) }
+                }
+                .fill(.white, style: FillStyle(eoFill: true))
+            } else {
+                Rectangle().fill(.white)
+            }
+#else
+            Rectangle().fill(.white)
+#endif
+        }
+    }
+
+    private var tailOverlay: some View {
+        GeometryReader { geometry in
+#if canImport(UIKit)
+            if let tail = tailGeometry(size: geometry.size) {
+                let rows = fillRows(size: geometry.size)
+                ForEach(tail.slices) { slice in
+                    let motion = tail.usesLetterMotion
+                        ? TailLetterMotion.state(progress: state.tailProgress ?? 0,
+                            letterIndex: slice.letterIndex, letterCount: tail.letterCount)
+                        : LiveLyricsTailAnimation.wholeWordMotion(progress: state.tailProgress ?? 0)
+                    ZStack(alignment: .topLeading) {
+                        Text(state.fullLine).foregroundStyle(baseColor)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(state.fullLine).foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .mask { renderFillMask(rows: rows, size: geometry.size) }
+                        Text(state.fullLine).foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .opacity(motion.illumination)
+                    }
+                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+                    .mask {
+                        Rectangle().fill(.white)
+                            .frame(width: slice.bounds.width, height: slice.bounds.height)
+                            .position(x: slice.bounds.midX, y: slice.bounds.midY)
+                    }
+                    .offset(y: -CGFloat(motion.lift))
+                    .shadow(color: .white.opacity(motion.glow * 0.72), radius: 7)
+                    .shadow(color: .white.opacity(motion.glow * 0.32), radius: 0)
+                    .animation(nil, value: state.marqueeIdentity)
+                    .animation(nil, value: geometry.size)
+                    .animation(state.tailAnimation, value: state.tailProgress)
+                }
+                .accessibilityHidden(true)
+            }
+#endif
+        }
+        .allowsHitTesting(false)
+    }
+
+#if canImport(UIKit)
+    private func tailGeometry(size: CGSize) -> LiveLyricsTailGeometry? {
+        guard state.usesWordTiming, let word = state.tailWord else { return nil }
+        let base = UIFont.preferredFont(forTextStyle: .title3)
+        let font = UIFont(descriptor: base.fontDescriptor.withSymbolicTraits(.traitBold)
+                            ?? base.fontDescriptor, size: base.pointSize)
+        return LiveLyricsFillLayout.tail(text: state.fullLine, characterStart: word.characterStart,
+            size: size, font: font, minimumScale: minimumScale,
+            rightToLeft: layoutDirection == .rightToLeft)
+    }
+#endif
 
     private var baseColor: Color {
         if state.usesWordTiming { return .secondary.opacity(0.55) }
@@ -339,59 +422,68 @@ private struct LiveWordText: View {
     private var fillMask: some View {
         GeometryReader { geometry in
 #if canImport(UIKit)
-            let baseFont = UIFont.preferredFont(forTextStyle: .title3)
-            let font = UIFont(
-                descriptor: baseFont.fontDescriptor.withSymbolicTraits(.traitBold)
-                    ?? baseFont.fontDescriptor,
-                size: baseFont.pointSize
-            )
-            let rows = LiveLyricsFillLayout.rows(
-                text: state.fullLine,
-                size: geometry.size,
-                font: font,
-                minimumScale: minimumScale,
-                rightToLeft: layoutDirection == .rightToLeft,
-                progress: state.fillTarget
-            )
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                let feather = min(18, max(8, row.bounds.width * 0.04))
-                let offset = row.filledWidth > 0
-                    ? row.filledWidth - row.bounds.width
-                    : -row.bounds.width - feather
-                HStack(spacing: 0) {
-                    Rectangle().fill(.white)
-                        .frame(width: row.bounds.width)
-                    LinearGradient(
-                        stops: [
-                            .init(color: .white, location: 0),
-                            .init(color: .white.opacity(0.72), location: 0.28),
-                            .init(color: .white.opacity(0.25), location: 0.66),
-                            .init(color: .clear, location: 1)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .frame(width: feather)
-                }
-                .frame(width: row.bounds.width + feather, height: row.bounds.height)
-                .offset(x: offset)
-                // Override the fill animation on a line/size change only.
-                // Text keeps Apple's default transition; the cursor resets at once.
-                .animation(nil, value: state.marqueeIdentity)
-                .animation(nil, value: geometry.size)
-                .animation(state.wordFillAnimation, value: state.fillTarget)
-                .frame(width: row.bounds.width, height: row.bounds.height, alignment: .leading)
-                .clipped()
-                .environment(\.layoutDirection, .leftToRight)
-                .scaleEffect(x: layoutDirection == .rightToLeft ? -1 : 1, y: 1)
-                .offset(y: row.bounds.minY)
-                .transition(.identity)
-            }
+            renderFillMask(rows: fillRows(size: geometry.size), size: geometry.size)
 #else
             Rectangle()
 #endif
         }
     }
+#if canImport(UIKit)
+    private func fillRows(size: CGSize) -> [LiveLyricsFillRow] {
+        let baseFont = UIFont.preferredFont(forTextStyle: .title3)
+        let font = UIFont(
+            descriptor: baseFont.fontDescriptor.withSymbolicTraits(.traitBold)
+                ?? baseFont.fontDescriptor,
+            size: baseFont.pointSize
+        )
+        return LiveLyricsFillLayout.rows(
+            text: state.fullLine,
+            size: size,
+            font: font,
+            minimumScale: minimumScale,
+            rightToLeft: layoutDirection == .rightToLeft,
+            progress: state.fillTarget
+        )
+    }
+
+    private func renderFillMask(rows: [LiveLyricsFillRow], size: CGSize) -> some View {
+        ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+            let feather = min(18, max(8, row.bounds.width * 0.04))
+            let offset = row.filledWidth > 0
+                ? row.filledWidth - row.bounds.width
+                : -row.bounds.width - feather
+            HStack(spacing: 0) {
+                Rectangle().fill(.white)
+                    .frame(width: row.bounds.width)
+                LinearGradient(
+                    stops: [
+                        .init(color: .white, location: 0),
+                        .init(color: .white.opacity(0.72), location: 0.28),
+                        .init(color: .white.opacity(0.25), location: 0.66),
+                        .init(color: .clear, location: 1)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(width: feather)
+            }
+            .frame(width: row.bounds.width + feather, height: row.bounds.height)
+            .offset(x: offset)
+            // Override the fill animation on a line/size change only.
+            // Text keeps Apple's default transition; the cursor resets at once.
+            .animation(nil, value: state.marqueeIdentity)
+            .animation(nil, value: size)
+            .animation(state.wordFillAnimation, value: state.fillTarget)
+            .frame(width: row.bounds.width, height: row.bounds.height, alignment: .leading)
+            .clipped()
+            .environment(\.layoutDirection, .leftToRight)
+            .scaleEffect(x: layoutDirection == .rightToLeft ? -1 : 1, y: 1)
+            .offset(y: row.bounds.minY)
+            .transition(.identity)
+        }
+    }
+#endif
+
 }
 
 /// Dynamic Island intentionally stays line-synced. The underlying content
@@ -474,6 +566,11 @@ private struct CompactMarqueeLine: View {
 }
 
 private extension LyricsAttributes.ContentState {
+    var tailAnimation: Animation? {
+        guard isPlaying, usesWordTiming, let duration = tailAnimationDurationMs, duration > 0 else { return nil }
+        return .linear(duration: min(2, Double(duration) / 1_000))
+    }
+
     var wordFillAnimation: Animation? {
         guard isPlaying, usesWordTiming, fillAnimationDurationMs > 0 else { return nil }
         return .linear(duration: min(2, Double(fillAnimationDurationMs) / 1_000))

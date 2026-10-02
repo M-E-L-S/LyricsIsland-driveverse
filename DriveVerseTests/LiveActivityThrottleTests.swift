@@ -54,6 +54,25 @@ import Foundation
         #expect(abs(fireIn - 1.0) < 0.0001)
     }
 
+    @Test func fillKickoffIsImmediateButTailAndMarqueeShareTheFollowingBudget() {
+        var throttle = LiveActivityUpdateThrottle(minInterval: LiveLyricsAnimationTiming.ordinaryUpdateInterval)
+        throttle.noteSent(now: t0) // new line, archived empty mask
+        let kickoff = t0.addingTimeInterval(LiveLyricsAnimationTiming.lineFillStartDelay)
+        #expect(throttle.decide(critical: true, now: kickoff) == .sendNow)
+        // A tail endpoint and a compact marquee endpoint cannot each consume
+        // a separate update budget immediately after the first fill.
+        for delay in [0.08, 0.12] {
+            guard case .coalesce(let fireIn) = throttle.decide(
+                critical: false, now: kickoff.addingTimeInterval(delay)
+            ) else { Issue.record("Animation endpoints bypassed shared throttle"); return }
+            #expect(abs(delay + fireIn - LiveLyricsAnimationTiming.ordinaryUpdateInterval) < 0.0001)
+        }
+        let flush = kickoff.addingTimeInterval(LiveLyricsAnimationTiming.ordinaryUpdateInterval)
+        throttle.noteSent(now: flush)
+        guard case .coalesce = throttle.decide(critical: false, now: flush.addingTimeInterval(0.1))
+        else { Issue.record("Flush failed to consume budget"); return }
+    }
+
     /// Stress: a 60 s chorus with a line change every 0.4 s. Sends must never
     /// be closer than the interval, and the newest line must always land via
     /// the trailing edge — nothing may starve.

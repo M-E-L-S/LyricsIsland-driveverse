@@ -70,6 +70,7 @@ targets:
       - path: DriveVerseWidgets
       - path: DriveVerse/LiveActivity/LyricsAttributes.swift
       - path: DriveVerse/LiveActivity/LiveLyricsFillLayout.swift
+      - path: DriveVerse/LiveActivity/LiveLyricsTailAnimation.swift
       - path: DriveVerse/LiveActivity/LiveLyricsParticleLayout.swift
       - path: DriveVerse/LiveActivity/LiveLyricsParticleMorph.swift
       - path: DriveVerse/LiveActivity/PlaybackIntents.swift

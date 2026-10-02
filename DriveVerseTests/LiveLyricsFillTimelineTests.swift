@@ -7,20 +7,20 @@ import Testing
     }
 
     @Test func handsOffBeforeThePreviousWordFinishes() {
-        let words = [word("你", 0, 600), word("好", 600, 1_200)]
+        let words = [word("你", 0, 1_200), word("好", 1_200, 2_400)]
         #expect(LiveLyricsFillTimeline.next(words: words, at: 0, after: 0)
-                == .animate(target: 1, durationMs: 600))
+                == .animate(target: 1, durationMs: 1_200))
         // Already target the next word while the old animation is in flight.
-        #expect(LiveLyricsFillTimeline.next(words: words, at: 480, after: 1)
-                == .animate(target: 2, durationMs: 720))
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 1_080, after: 1)
+                == .animate(target: 2, durationMs: 1_320))
     }
 
     @Test func rapidSyllablesShareAnAnimationInsteadOfWaitingForTicks() {
-        let words = (0..<10).map { word("字", $0 * 100, ($0 + 1) * 100) }
+        let words = (0..<30).map { word("字", $0 * 100, ($0 + 1) * 100) }
         #expect(LiveLyricsFillTimeline.next(words: words, at: 0, after: 0)
-                == .animate(target: 5, durationMs: 500))
-        #expect(LiveLyricsFillTimeline.next(words: words, at: 380, after: 5)
-                == .animate(target: 9, durationMs: 520))
+                == .animate(target: 12, durationMs: 1_200))
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 1_080, after: 12)
+                == .animate(target: 23, durationMs: 1_220))
     }
 
     @Test func longWordContinuesWithinTheSystemAnimationLimit() {
@@ -91,5 +91,27 @@ import Testing
                 == .animate(target: 1, durationMs: 300))
         #expect(LiveLyricsFillTimeline.next(words: words, at: 680, after: 1)
                 == .wait(milliseconds: 120))
+    }
+
+    @Test func continuousFastLyricsUseFewerThanOneEndpointPerSecond() {
+        let words = (0..<100).map { word("字", $0 * 100, ($0 + 1) * 100) }
+        var position = 0
+        var target = 0.0
+        var endpointCount = 0
+        for _ in 0..<30 {
+            guard let step = LiveLyricsFillTimeline.next(words: words, at: position, after: target)
+            else { break }
+            switch step {
+            case .wait(let milliseconds): position += milliseconds
+            case .animate(let value, let milliseconds):
+                endpointCount += 1
+                #expect(value > target)
+                #expect(milliseconds <= 2_000)
+                target = value
+                position += max(1, milliseconds - LiveLyricsFillTimeline.handoffLeadMs)
+            }
+        }
+        #expect(target == 100)
+        #expect(endpointCount <= 10)
     }
 }

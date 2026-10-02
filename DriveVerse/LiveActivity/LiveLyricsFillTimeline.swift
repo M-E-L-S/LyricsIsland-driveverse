@@ -2,7 +2,7 @@
 /// Short adjacent words share a phase; singing pauses remain real pauses.
 enum LiveLyricsFillTimeline {
     static let maximumPhaseMs = 1_800
-    static let minimumPhaseMs = 450
+    static let minimumPhaseMs = 1_200
     static let handoffLeadMs = 120
 
     enum Step: Equatable {
@@ -38,7 +38,7 @@ enum LiveLyricsFillTimeline {
             // Reveal the missed prefix smoothly instead of leaving it blank.
             let target = progress(words: words, at: positionMs)
             if target > previousTarget {
-                return .animate(target: target, durationMs: minimumPhaseMs)
+                return .animate(target: target, durationMs: 450)
             }
             return nil
         }
@@ -48,7 +48,7 @@ enum LiveLyricsFillTimeline {
             if target > previousTarget {
                 // Catch up a prefix missed during the line transition, but do
                 // not reveal any part of the word after this singing pause.
-                return .animate(target: target, durationMs: min(minimumPhaseMs, gapMs))
+                return .animate(target: target, durationMs: min(450, gapMs))
             }
             return .wait(milliseconds: gapMs)
         }

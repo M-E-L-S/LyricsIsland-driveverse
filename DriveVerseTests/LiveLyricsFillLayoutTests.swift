@@ -68,5 +68,43 @@ import Testing
         #expect(rows("你好", progress: 1, width: 0).isEmpty)
         #expect(rows("你好", progress: 1, height: 0).isEmpty)
     }
+
+    @Test func tailSlicesPreserveGraphemePrefixAndCoverExactlyTheRemovedInk() throws {
+        let prefix = "👨‍👩‍👧‍👦e\u{301} "
+        let tail = try #require(LiveLyricsFillLayout.tail(
+            text: prefix + "office!", characterStart: prefix.count,
+            size: CGSize(width: 300, height: 30),
+            font: .systemFont(ofSize: 20, weight: .bold),
+            minimumScale: 1, rightToLeft: false
+        ))
+        #expect(tail.usesLetterMotion)
+        #expect(tail.letterCount == 6)
+        #expect(tail.slices.compactMap(\.letterIndex) == Array(0..<6))
+        #expect(tail.slices.last?.letterIndex == nil) // punctuation stays still
+        for bounds in tail.wordBounds {
+            let slices = tail.slices.filter { $0.bounds.minY == bounds.minY }
+            let union = try #require(slices.map(\.bounds).reduce(nil as CGRect?) { accumulated, rect in
+                accumulated.map { $0.union(rect) } ?? rect
+            })
+            #expect(union == bounds)
+            for pair in zip(slices, slices.dropFirst()) {
+                #expect(abs(pair.0.bounds.maxX - pair.1.bounds.minX) < 0.001)
+            }
+        }
+    }
+
+    @Test func nonLatinTailMovesAsWholeWordAndRetainsWrappedRows() throws {
+        let tail = try #require(LiveLyricsFillLayout.tail(
+            text: "你好世界你好世界", characterStart: 2,
+            size: CGSize(width: 85, height: 60),
+            font: .systemFont(ofSize: 20, weight: .bold),
+            minimumScale: 1, rightToLeft: false
+        ))
+        #expect(!tail.usesLetterMotion)
+        #expect(tail.wordBounds.count == 2)
+        #expect(tail.slices.map(\.bounds) == tail.wordBounds)
+        #expect(tail.slices.allSatisfy { $0.letterIndex == nil })
+        #expect(tail.wordBounds.allSatisfy { $0.minX >= 0 && $0.maxX <= 85 })
+    }
 }
 #endif

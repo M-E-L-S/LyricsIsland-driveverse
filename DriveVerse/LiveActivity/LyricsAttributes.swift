@@ -1,5 +1,18 @@
 import Foundation
 
+enum LiveLyricsWordEffect: String, Codable, CaseIterable, Identifiable {
+    case classic
+    case fill
+
+    var id: Self { self }
+    var title: LocalizedStringResource {
+        switch self {
+        case .classic: return "Classic three colors"
+        case .fill: return "Progressive fill"
+        }
+    }
+}
+
 enum LiveLyricsLineEffect: String, Codable, CaseIterable, Identifiable {
     case original
     case particles
@@ -22,6 +35,7 @@ struct LiveLyricsParticleLineIdentity: Hashable {
 
 /// Shared timing keeps line presentation and the first fill update in order.
 enum LiveLyricsAnimationTiming {
+    static let ordinaryUpdateInterval: TimeInterval = 0.5
     static let lineTransitionDuration: TimeInterval = 0.35
 
     // Activity.update completion is not a display acknowledgement. Leave a
@@ -71,6 +85,10 @@ struct LyricsAttributes: ActivityAttributes {
         /// converts this to a geometric mask endpoint for native interpolation.
         var fillTarget: Double
         var fillAnimationDurationMs: Int
+        var wordEffect: LiveLyricsWordEffect? = nil
+        var tailWord: LiveLyricsTailWord? = nil
+        var tailProgress: Double? = nil
+        var tailAnimationDurationMs: Int? = nil
         /// Compact-island marquee metadata. The line index restarts a
         /// one-shot animation even when two adjacent lyric lines are equal.
         var lineIndex: Int?
@@ -158,6 +176,10 @@ struct LyricsAttributes: ActivityAttributes {
             case activeWordEndMs = "f"
             case fillTarget = "g"
             case fillAnimationDurationMs = "h"
+            case wordEffect = "we"
+            case tailWord = "tw"
+            case tailProgress = "tp"
+            case tailAnimationDurationMs = "td"
             case lineIndex = "l"
             case usesWordTiming = "w"
             case lineMarqueeAtEnd = "e"

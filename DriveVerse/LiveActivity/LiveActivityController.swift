@@ -18,10 +18,9 @@ import UIKit
 @MainActor
 final class LiveActivityController {
     static let endDelay: TimeInterval = 30
-    /// Rapid line/word changes are coalesced (never dropped) to one update per
-    /// this interval; the newest lyric state always lands, at worst this late.
-    /// Track changes and play/pause flips always send immediately.
-    static let minUpdateInterval: TimeInterval = 0.20
+    /// Word, tail and compact-marquee endpoints share this spacing budget.
+    /// Line/track/playback changes and the first fill endpoint send immediately.
+    static let minUpdateInterval = LiveLyricsAnimationTiming.ordinaryUpdateInterval
     private static let wordFillKickoffDelay: TimeInterval = 0.08
     private static let particleTargetPreparationDelay: TimeInterval = 0.12
 
@@ -59,6 +58,13 @@ final class LiveActivityController {
     var wordUpdatesEnabled = true {
         didSet {
             guard wordUpdatesEnabled != oldValue else { return }
+            forceNextUpdate()
+        }
+    }
+
+    var wordEffect: LiveLyricsWordEffect = .fill {
+        didSet {
+            guard wordEffect != oldValue else { return }
             forceNextUpdate()
         }
     }
@@ -167,7 +173,7 @@ final class LiveActivityController {
         let policyWantsUpdate = policy.shouldUpdate(
             trackKey: key,
             lineIndex: position?.lineIndex,
-            wordIndex: hasWordTimeline ? 0 : nil,
+            wordIndex: policyWordIndex(position),
             isPlaying: state.isPlaying
         )
         guard seekedWithinLine || policyWantsUpdate else { return }
@@ -192,6 +198,7 @@ final class LiveActivityController {
             position: position,
             wordUpdatesEnabled: wordUpdatesEnabled,
             lineEffect: lineEffect,
+            wordEffect: wordEffect,
             restartingLineFill: restartingLineFill,
             lineMarqueeAtEnd: lineMarqueeAtEnd,
             lineMarqueeDuration: lineMarqueeDuration
@@ -226,7 +233,8 @@ final class LiveActivityController {
                 guard await self.submit(content, generation: generation, on: activity) else { return }
                 guard self.wordFillGeneration == generation,
                       self.activity?.id == activity.id else { return }
-                guard content.usesWordTiming, content.isPlaying else { return }
+                guard content.usesWordTiming, content.isPlaying,
+                      content.wordEffect != .classic else { return }
                 // Archive the initial mask first, then allow the text transition
                 // to finish. Starting both updates concurrently can lose the
                 // empty endpoint and make the future target appear instantly.
@@ -237,8 +245,10 @@ final class LiveActivityController {
                     delay: restartingLineFill
                         ? LiveLyricsAnimationTiming.lineFillStartDelay
                         : Self.wordFillKickoffDelay,
+                    startsFill: true,
                     on: activity
                 )
+
             }
         case .coalesce(let fireIn):
             pendingContent = content
@@ -260,10 +270,18 @@ final class LiveActivityController {
         guard pendingTask == nil else { return } // armed — content already replaced
         pendingTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
-            guard !Task.isCancelled, let self, let content = self.pendingContent else { return }
+            guard !Task.isCancelled, let self, var content = self.pendingContent else { return }
+            let now = Date()
+            let ageMs = max(0, Int(now.timeIntervalSince(content.positionDate) * 1_000))
+            content.fillAnimationDurationMs = max(0, content.fillAnimationDurationMs - ageMs)
+            if let duration = content.tailAnimationDurationMs, duration > 0 {
+                content.tailAnimationDurationMs = max(180, duration - ageMs)
+            }
+            content.lyricPositionMs += content.isPlaying ? ageMs : 0
+            content.positionDate = now
             self.pendingContent = nil
             self.pendingTask = nil
-            self.throttle.noteSent(now: Date())
+            self.throttle.noteSent(now: now)
             _ = await self.submit(content, generation: self.wordFillGeneration, on: activity)
         }
     }
@@ -313,12 +331,16 @@ final class LiveActivityController {
                   self.lastSentLineIndex == expectedLineIndex,
                   var content = self.latestContent else { return }
             self.lineMarqueeAtEnd = true
+            let now = Date()
+            let ageMs = max(0, Int(now.timeIntervalSince(content.positionDate) * 1_000))
+            content.fillAnimationDurationMs = max(0, content.fillAnimationDurationMs - ageMs)
+            content.tailAnimationDurationMs = content.tailAnimationDurationMs.map { max(0, $0 - ageMs) }
+            content.lyricPositionMs += content.isPlaying ? ageMs : 0
+            content.positionDate = now
             content.lineMarqueeAtEnd = true
             if content.usesLineParticles { content.stopParticleMorph() }
             self.latestContent = content
-            self.lastSubmittedContent = content
-            self.throttle.noteSent(now: Date())
-            await activity.update(ActivityContent(state: content, staleDate: nil))
+            await self.submitAnimationUpdate(content, now: now, on: activity)
             self.lineMarqueeTask = nil
         }
     }
@@ -335,6 +357,7 @@ final class LiveActivityController {
         expectedLineIndex: Int?,
         words: [LyricWordTiming],
         delay: TimeInterval,
+        startsFill: Bool = false,
         on activity: Activity<LyricsAttributes>
     ) {
         let generation = wordFillGeneration
@@ -349,45 +372,73 @@ final class LiveActivityController {
                   content.usesWordTiming, content.isPlaying else { return }
 
             let now = Date()
-            let positionMs = content.lyricPositionMs
-                + Int(now.timeIntervalSince(content.positionDate) * 1_000)
-            guard let step = LiveLyricsFillTimeline.next(
+            let elapsedMs = max(0, Int(now.timeIntervalSince(content.positionDate) * 1_000))
+            let positionMs = content.lyricPositionMs + elapsedMs
+            content.fillAnimationDurationMs = max(0, content.fillAnimationDurationMs - elapsedMs)
+            if let duration = content.tailAnimationDurationMs {
+                content.tailAnimationDurationMs = max(0, duration - elapsedMs)
+            }
+            let fillStep = LiveLyricsFillTimeline.next(
                 words: words, at: positionMs, after: content.fillTarget
-            ) else {
+            )
+            let tailStep = content.tailWord.flatMap {
+                LiveLyricsTailAnimation.next(word: $0, at: positionMs,
+                                            after: content.tailProgress ?? 0)
+            }
+            guard fillStep != nil || tailStep != nil else {
                 self.wordFillTask = nil
                 return
             }
-            let nextDelayMs: Int
-            switch step {
-            case .wait(let milliseconds):
-                nextDelayMs = milliseconds
-            case .animate(let target, let durationMs):
+            var delays: [Int] = []
+            var changed = false
+            if let fillStep {
+                switch fillStep {
+                case .wait(let milliseconds): delays.append(milliseconds)
+                case .animate(let target, let durationMs):
+                    content.fillTarget = target
+                    content.fillAnimationDurationMs = durationMs
+                    delays.append(max(50, durationMs - LiveLyricsFillTimeline.handoffLeadMs))
+                    changed = true
+                }
+            }
+            if let tailStep {
+                switch tailStep {
+                case .wait(let milliseconds): delays.append(milliseconds)
+                case .animate(let progress, let durationMs):
+                    content.tailProgress = progress
+                    content.tailAnimationDurationMs = durationMs
+                    delays.append(max(40, durationMs - 30))
+                    changed = true
+                }
+            }
+            if changed {
                 content.lyricPositionMs = positionMs
                 content.positionDate = now
-                content.fillTarget = target
-                content.fillAnimationDurationMs = durationMs
                 self.latestContent = content
-                self.throttle.noteSent(now: now)
-                // Schedule from submission time, not Activity.update completion:
-                // its delivery latency must not accumulate between phases.
-                nextDelayMs = max(50, durationMs - LiveLyricsFillTimeline.handoffLeadMs)
-                self.scheduleWordFill(
-                    expectedTrackKey: expectedTrackKey,
-                    expectedLineIndex: expectedLineIndex,
-                    words: words,
-                    delay: Double(nextDelayMs) / 1_000,
-                    on: activity
-                )
-                await activity.update(ActivityContent(state: content, staleDate: nil))
-                return
             }
             self.scheduleWordFill(
-                expectedTrackKey: expectedTrackKey,
-                expectedLineIndex: expectedLineIndex,
-                words: words,
-                delay: Double(nextDelayMs) / 1_000,
-                on: activity
+                expectedTrackKey: expectedTrackKey, expectedLineIndex: expectedLineIndex,
+                words: words, delay: Double(max(1, delays.min() ?? 1_000)) / 1_000,
+                startsFill: startsFill && !changed, on: activity
             )
+            if changed {
+                await self.submitAnimationUpdate(content, now: now, critical: startsFill, on: activity)
+            }
+
+        }
+    }
+
+    private func submitAnimationUpdate(_ content: LyricsAttributes.ContentState,
+                                       now: Date, critical: Bool = false,
+                                       on activity: Activity<LyricsAttributes>) async {
+        switch throttle.decide(critical: critical, now: now) {
+        case .sendNow:
+            cancelPendingUpdate()
+            lastSubmittedContent = content
+            await activity.update(ActivityContent(state: content, staleDate: nil))
+        case .coalesce(let fireIn):
+            pendingContent = content
+            armPendingUpdate(after: fireIn, on: activity)
         }
     }
 
@@ -415,6 +466,7 @@ final class LiveActivityController {
                 position: position,
                 wordUpdatesEnabled: wordUpdatesEnabled,
                 lineEffect: lineEffect,
+                wordEffect: wordEffect,
                 lineMarqueeAtEnd: false,
                 lineMarqueeDuration: lineMarqueeDuration
             )
@@ -453,7 +505,7 @@ final class LiveActivityController {
                 policy.seed(
                     trackKey: Self.key(for: state),
                     lineIndex: position?.lineIndex,
-                    wordIndex: Self.hasWordTimeline(position, enabled: wordUpdatesEnabled) ? 0 : nil,
+                    wordIndex: policyWordIndex(position),
                     isPlaying: state.isPlaying
                 )
                 if Self.compactLineNeedsMarquee(position?.currentLine ?? "♪ \(state.title)") {
@@ -464,12 +516,13 @@ final class LiveActivityController {
                         on: requested
                     )
                 }
-                if content.usesWordTiming && state.isPlaying {
+                if content.usesWordTiming && state.isPlaying && wordEffect == .fill {
                     scheduleWordFill(
                         expectedTrackKey: Self.key(for: state),
                         expectedLineIndex: position?.lineIndex,
                         words: position?.currentWords ?? [],
                         delay: Self.wordFillKickoffDelay,
+                        startsFill: true,
                         on: requested
                     )
                 }
@@ -592,6 +645,7 @@ final class LiveActivityController {
         position: LyricsPosition?,
         wordUpdatesEnabled: Bool,
         lineEffect: LiveLyricsLineEffect,
+        wordEffect: LiveLyricsWordEffect,
         restartingLineFill: Bool = false,
         lineMarqueeAtEnd: Bool,
         lineMarqueeDuration: TimeInterval
@@ -609,6 +663,15 @@ final class LiveActivityController {
                 at: lyricPositionMs,
                 restartingLine: restartingLineFill
             ) : 0
+        let classicBeforeStart = wordEffect == .classic && lyricPositionMs < segments.startMs
+        let tailWord: LiveLyricsTailWord? = {
+            guard segments.usesWordTiming, wordEffect == .fill, let words = position?.currentWords,
+                  let last = words.last else { return nil }
+            return LiveLyricsTailWord.make(
+                characterStart: words.dropLast().reduce(0) { $0 + $1.original.count },
+                startMs: last.startTimeMs, endMs: last.endTimeMs
+            )
+        }()
         return LyricsAttributes.ContentState(
             title: String(state.title.prefix(48)),
             artist: String(state.artist.prefix(48)),
@@ -616,14 +679,18 @@ final class LiveActivityController {
             secondaryLine: String((position?.currentSecondaryLine ?? "").prefix(72)),
             nextLine: String((position?.nextLine ?? "").prefix(72)),
             completedText: segments.completed,
-            activeText: segments.active,
-            remainingText: segments.remaining,
+            activeText: classicBeforeStart ? "" : segments.active,
+            remainingText: classicBeforeStart ? segments.active + segments.remaining : segments.remaining,
             lyricPositionMs: lyricPositionMs,
             positionDate: Date(),
             activeWordStartMs: segments.startMs,
             activeWordEndMs: segments.endMs,
             fillTarget: fillTarget,
             fillAnimationDurationMs: 0,
+            wordEffect: wordEffect,
+            tailWord: tailWord,
+            tailProgress: tailWord.map { restartingLineFill ? 0 : $0.progress(at: lyricPositionMs) },
+            tailAnimationDurationMs: tailWord == nil ? nil : 0,
             lineIndex: position?.lineIndex,
             usesWordTiming: segments.usesWordTiming,
             lineMarqueeAtEnd: lineMarqueeAtEnd,
@@ -631,6 +698,14 @@ final class LiveActivityController {
             isPlaying: state.isPlaying,
             lineEffect: wordUpdatesEnabled ? .original : lineEffect
         )
+    }
+
+    private func policyWordIndex(_ position: LyricsPosition?) -> Int? {
+        guard Self.hasWordTimeline(position, enabled: wordUpdatesEnabled) else { return nil }
+        if wordEffect == .fill { return 0 }
+        guard let position, let first = position.currentWords?.first,
+              position.lyricPositionMs >= first.startTimeMs else { return nil }
+        return position.currentWordIndex
     }
 
     private static func hasWordTimeline(_ position: LyricsPosition?, enabled: Bool) -> Bool {

@@ -32,6 +32,7 @@ final class AppModel: ObservableObject {
     private static let lyricsEnabledKey = "lyricsEnabled"
     private static let liveActivityWordUpdatesKey = "liveActivityWordUpdatesEnabled"
     private static let liveActivityLineEffectKey = "liveActivityLineEffect"
+    private static let liveActivityWordEffectKey = "liveActivityWordEffect"
 
     // MARK: UI state
 
@@ -65,6 +66,15 @@ final class AppModel: ObservableObject {
 #if os(iOS)
             liveActivity.wordUpdatesEnabled = liveActivityWordUpdatesEnabled
             syncEngine.setLiveActivityLineLeadMs(liveActivityLineLeadMs)
+            syncLiveActivity()
+#endif
+        }
+    }
+    @Published var liveActivityWordEffect: LiveLyricsWordEffect {
+        didSet {
+            defaults.set(liveActivityWordEffect.rawValue, forKey: Self.liveActivityWordEffectKey)
+#if os(iOS)
+            liveActivity.wordEffect = liveActivityWordEffect
             syncLiveActivity()
 #endif
         }
@@ -172,6 +182,8 @@ final class AppModel: ObservableObject {
         ) as? Bool ?? true
         liveActivityLineEffect = defaults.string(forKey: Self.liveActivityLineEffectKey)
             .flatMap(LiveLyricsLineEffect.init(rawValue:)) ?? .original
+        liveActivityWordEffect = defaults.string(forKey: Self.liveActivityWordEffectKey)
+            .flatMap(LiveLyricsWordEffect.init(rawValue:)) ?? .fill
         lyricsDisplayMode = defaults.string(forKey: Self.displayModeKey)
             .flatMap(LyricsDisplayMode.init(rawValue:)) ?? .originalAndTranslation
         chineseConversion = defaults.string(forKey: Self.chineseConversionKey)
@@ -202,6 +214,7 @@ final class AppModel: ObservableObject {
 
 #if os(iOS)
         liveActivity.wordUpdatesEnabled = liveActivityWordUpdatesEnabled
+        liveActivity.wordEffect = liveActivityWordEffect
         liveActivity.lineEffect = liveActivityLineEffect
         backgroundKeeper.onIssue = { [weak self] message in
             Task { @MainActor in

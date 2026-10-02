@@ -60,10 +60,16 @@ struct SettingsView: View {
                     isOn: $model.liveActivityWordUpdatesEnabled
                 )
                 .disabled(!model.lyricsEnabled)
+                Picker("Word lyric effect", selection: $model.liveActivityWordEffect) {
+                    ForEach(LiveLyricsWordEffect.allCases) { effect in
+                        Text(effect.title).tag(effect)
+                    }
+                }
+                .disabled(!model.lyricsEnabled || !model.liveActivityWordUpdatesEnabled)
             } header: {
                 Text("Live Activity")
             } footer: {
-                Text("When enabled, DriveVerse sends aggressive word-level updates for the Lock Screen and CarPlay. Turn it off to update every Live Activity only when the lyric line changes.")
+                Text("Choose classic three-color highlighting or progressive fill for word lyrics. Ordinary Live Activity updates are combined, at most twice per second; line changes, initial fill and playback controls update immediately.")
             }
 
             Section {
