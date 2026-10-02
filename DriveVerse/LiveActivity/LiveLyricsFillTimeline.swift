@@ -32,7 +32,7 @@ enum LiveLyricsFillTimeline {
     }
 
     static func next(words: [LyricWordTiming], at positionMs: Int,
-                     after previousTarget: Double) -> Step? {
+                     after previousTarget: Double, heldTailStartMs: Int? = nil) -> Step? {
         guard let index = words.firstIndex(where: { $0.endTimeMs > positionMs }) else {
             // A short line may finish singing while its text is transitioning.
             // Reveal the missed prefix smoothly instead of leaving it blank.
@@ -54,11 +54,16 @@ enum LiveLyricsFillTimeline {
         }
         let limit = positionMs + maximumPhaseMs
         var end = min(limit, words[index].endTimeMs)
+        if let heldTailStartMs, positionMs < heldTailStartMs {
+            end = min(end, heldTailStartMs)
+        }
         var nextIndex = index + 1
         // Combine rapid syllables so delivery latency doesn't create a stop
-        // between every glyph. Do not combine across a singing pause.
+        // between every glyph. Keep singing pauses and a held tail's start as
+        // hard boundaries: a linear phase must not light that token early.
         while end - positionMs < minimumPhaseMs, nextIndex < words.count,
-              words[nextIndex].startTimeMs <= end {
+              words[nextIndex].startTimeMs <= end,
+              words[nextIndex].startTimeMs != heldTailStartMs {
             end = min(limit, words[nextIndex].endTimeMs)
             nextIndex += 1
         }

@@ -66,6 +66,22 @@ struct LiveLyricsTailWord: Codable, Hashable {
 /// Archive endpoints for native offset, opacity and shadow interpolation.
 /// This runs only during a held final token, never as a widget-local timer.
 enum LiveLyricsTailAnimation {
+    static let maximumLift = 2.0
+
+    /// Lock-screen motion is subtle; brightness remains exclusively owned by
+    /// the native fill mask, never by a second unmasked illumination layer.
+    static func motion(progress: Double, letterIndex: Int?, letterCount: Int,
+                       usesLetterMotion: Bool) -> TailLetterMotion {
+        let motion = usesLetterMotion
+            ? TailLetterMotion.state(progress: progress, letterIndex: letterIndex, letterCount: letterCount)
+            : wholeWordMotion(progress: progress)
+        return TailLetterMotion(lift: motion.lift * maximumLift / 6.2,
+                                glow: motion.glow, illumination: 0)
+    }
+
+    static func showsFilledTail(target: Double, word: LiveLyricsTailWord) -> Bool {
+        target > Double(word.characterStart)
+    }
     enum Step: Equatable {
         case wait(milliseconds: Int)
         case animate(progress: Double, durationMs: Int)

@@ -55,6 +55,9 @@ import Testing
         let restored = try JSONDecoder().decode(LyricsAttributes.ContentState.self,
                                                 from: JSONEncoder().encode(state))
         #expect(restored == state)
+        state.lyricPositionMs = 2_000
+        state.finishExpiredTail()
+        #expect(state.tailProgress == 1 && state.tailAnimationDurationMs == 0)
         state.wordEffect = .classic
         state.tailWord = nil
         state.tailProgress = nil

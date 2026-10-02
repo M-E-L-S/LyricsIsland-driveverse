@@ -368,19 +368,20 @@ private struct LiveWordText: View {
             if let tail = tailGeometry(size: geometry.size) {
                 let rows = fillRows(size: geometry.size)
                 ForEach(tail.slices) { slice in
-                    let motion = tail.usesLetterMotion
-                        ? TailLetterMotion.state(progress: state.tailProgress ?? 0,
-                            letterIndex: slice.letterIndex, letterCount: tail.letterCount)
-                        : LiveLyricsTailAnimation.wholeWordMotion(progress: state.tailProgress ?? 0)
+                    let motion = LiveLyricsTailAnimation.motion(progress: state.tailProgress ?? 0,
+                        letterIndex: slice.letterIndex, letterCount: tail.letterCount,
+                        usesLetterMotion: tail.usesLetterMotion)
                     ZStack(alignment: .topLeading) {
                         Text(state.fullLine).foregroundStyle(baseColor)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text(state.fullLine).foregroundStyle(.primary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .mask { renderFillMask(rows: rows, size: geometry.size) }
-                        Text(state.fullLine).foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .opacity(motion.illumination)
+                            .shadow(color: .white.opacity(motion.glow * 0.72), radius: 7)
+                            .shadow(color: .white.opacity(motion.glow * 0.32), radius: 0)
+                            .opacity(state.tailWord.map {
+                                LiveLyricsTailAnimation.showsFilledTail(target: state.fillTarget, word: $0)
+                            } == true ? 1 : 0)
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
                     .mask {
@@ -389,8 +390,6 @@ private struct LiveWordText: View {
                             .position(x: slice.bounds.midX, y: slice.bounds.midY)
                     }
                     .offset(y: -CGFloat(motion.lift))
-                    .shadow(color: .white.opacity(motion.glow * 0.72), radius: 7)
-                    .shadow(color: .white.opacity(motion.glow * 0.32), radius: 0)
                     .animation(nil, value: state.marqueeIdentity)
                     .animation(nil, value: geometry.size)
                     .animation(state.tailAnimation, value: state.tailProgress)

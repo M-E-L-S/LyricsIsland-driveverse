@@ -94,7 +94,9 @@ final class LiveActivityController {
         lineMarqueeDelay = 0.5
         lineMarqueeDuration = 1.8
         latestContent = nil
-        throttle = LiveActivityUpdateThrottle(minInterval: Self.minUpdateInterval)
+        throttle = LiveActivityUpdateThrottle(minInterval: LiveLyricsAnimationTiming.updateInterval(
+            wordUpdatesEnabled: wordUpdatesEnabled, wordEffect: wordEffect
+        ))
     }
 
     init() {
@@ -295,6 +297,7 @@ final class LiveActivityController {
         guard !Task.isCancelled, wordFillGeneration == generation,
               self.activity?.id == activity.id else { return false }
         var content = proposed
+        content.finishExpiredTail()
         if let prepared = content.prepareParticleTransition(from: lastSubmittedContent) {
             lastSubmittedContent = prepared
             await activity.update(ActivityContent(state: prepared, staleDate: nil))
@@ -379,7 +382,8 @@ final class LiveActivityController {
                 content.tailAnimationDurationMs = max(0, duration - elapsedMs)
             }
             let fillStep = LiveLyricsFillTimeline.next(
-                words: words, at: positionMs, after: content.fillTarget
+                words: words, at: positionMs, after: content.fillTarget,
+                heldTailStartMs: content.tailWord?.startMs
             )
             let tailStep = content.tailWord.flatMap {
                 LiveLyricsTailAnimation.next(word: $0, at: positionMs,
@@ -428,9 +432,12 @@ final class LiveActivityController {
         }
     }
 
-    private func submitAnimationUpdate(_ content: LyricsAttributes.ContentState,
+    private func submitAnimationUpdate(_ proposed: LyricsAttributes.ContentState,
                                        now: Date, critical: Bool = false,
                                        on activity: Activity<LyricsAttributes>) async {
+        var content = proposed
+        content.finishExpiredTail()
+        latestContent = content
         switch throttle.decide(critical: critical, now: now) {
         case .sendNow:
             cancelPendingUpdate()

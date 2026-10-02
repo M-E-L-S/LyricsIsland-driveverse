@@ -114,4 +114,18 @@ import Testing
         #expect(target == 100)
         #expect(endpointCount <= 10)
     }
+
+    @Test func heldTailCannotFillEarlyWhenItsLetterDensityDiffersFromThePrefix() {
+        let words = [word("I ", 0, 800), word("wonderful", 800, 3_200)]
+        // A combined linear phase used to cross the tail's first character
+        // around 626 ms, before the token actually started at 800 ms.
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 0, after: 0, heldTailStartMs: 800)
+            == .animate(target: 2, durationMs: 800))
+        #expect(LiveLyricsFillTimeline.next(words: words, at: 680, after: 2, heldTailStartMs: 800)
+            == .wait(milliseconds: 120))
+        guard case .animate(let target, let duration)? = LiveLyricsFillTimeline.next(
+            words: words, at: 800, after: 2, heldTailStartMs: 800
+        ) else { Issue.record("Tail did not begin filling at its singing boundary"); return }
+        #expect(target > 2 && duration <= 2_000)
+    }
 }

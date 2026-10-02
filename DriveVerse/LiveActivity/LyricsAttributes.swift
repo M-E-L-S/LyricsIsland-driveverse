@@ -36,6 +36,11 @@ struct LiveLyricsParticleLineIdentity: Hashable {
 /// Shared timing keeps line presentation and the first fill update in order.
 enum LiveLyricsAnimationTiming {
     static let ordinaryUpdateInterval: TimeInterval = 0.5
+    static let classicUpdateInterval: TimeInterval = 0.2
+
+    static func updateInterval(wordUpdatesEnabled: Bool, wordEffect: LiveLyricsWordEffect) -> TimeInterval {
+        wordUpdatesEnabled && wordEffect == .classic ? classicUpdateInterval : ordinaryUpdateInterval
+    }
     static let lineTransitionDuration: TimeInterval = 0.35
 
     // Activity.update completion is not a display acknowledgement. Leave a
@@ -46,8 +51,8 @@ enum LiveLyricsAnimationTiming {
     static func lineTriggerLeadMs(wordUpdatesEnabled: Bool,
                                   lineEffect: LiveLyricsLineEffect) -> Int {
         if !wordUpdatesEnabled && lineEffect == .particles {
-            // Start 200 ms later; keep the particle spring itself unchanged.
-            return 1_150
+            // Start another 200 ms later without changing the particle spring.
+            return 950
         }
         return Int(((lineTransitionDuration + 0.15) * 1_000).rounded())
     }
@@ -89,6 +94,14 @@ struct LyricsAttributes: ActivityAttributes {
         var tailWord: LiveLyricsTailWord? = nil
         var tailProgress: Double? = nil
         var tailAnimationDurationMs: Int? = nil
+
+        /// A queued lift endpoint can outlive the sung word. Settle it before
+        /// archiving so delivery delay cannot replay its glow after completion.
+        mutating func finishExpiredTail() {
+            guard let tailWord, lyricPositionMs >= tailWord.endMs else { return }
+            tailProgress = 1
+            tailAnimationDurationMs = 0
+        }
         /// Compact-island marquee metadata. The line index restarts a
         /// one-shot animation even when two adjacent lyric lines are equal.
         var lineIndex: Int?

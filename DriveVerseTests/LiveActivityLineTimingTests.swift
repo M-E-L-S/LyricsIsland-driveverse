@@ -33,14 +33,14 @@ import Testing
         }
     }
 
-    @Test func particleModeStartsTwoHundredMillisecondsLater() {
+    @Test func particleModeStartsAnotherTwoHundredMillisecondsLater() {
         let lead = LiveLyricsAnimationTiming.lineTriggerLeadMs(
             wordUpdatesEnabled: false, lineEffect: .particles
         )
-        #expect(lead == 1_150)
-        let before = SyncEngine.position(atMs: 8_849, lines: lines,
+        #expect(lead == 950)
+        let before = SyncEngine.position(atMs: 9_049, lines: lines,
             durationMs: nil, isPlaying: true, lineLookaheadMs: lead)
-        let boundary = SyncEngine.position(atMs: 8_850, lines: lines,
+        let boundary = SyncEngine.position(atMs: 9_050, lines: lines,
             durationMs: nil, isPlaying: true, lineLookaheadMs: lead)
         #expect(before.lineIndex == 0)
         #expect(boundary.lineIndex == 1)

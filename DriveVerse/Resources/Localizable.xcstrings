@@ -70,25 +70,25 @@
         }
       }
     },
-    "Choose classic three-color highlighting or progressive fill for word lyrics. Ordinary Live Activity updates are combined, at most twice per second; line changes, initial fill and playback controls update immediately." : {
+    "Classic three colors updates as words change. Progressive fill uses combined, lower-frequency updates. Line changes and playback controls update immediately." : {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choose classic three-color highlighting or progressive fill for word lyrics. Ordinary Live Activity updates are combined, at most twice per second; line changes, initial fill and playback controls update immediately."
+            "value": "Classic three colors updates as words change. Progressive fill uses combined, lower-frequency updates. Line changes and playback controls update immediately."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "逐字歌词可选择经典三色或逐字填充。常规实时活动更新会合并发送，每秒最多两次；换行、首次填充和播放控制立即更新。"
+            "value": "经典三色随当前词变化更新；逐字填充合并为较低频率的更新。换行和播放控制立即更新。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "逐字歌詞可選擇經典三色或逐字填充。一般即時動態更新會合併傳送，每秒最多兩次；換行、首次填充和播放控制立即更新。"
+            "value": "經典三色隨目前詞語變化更新；逐字填充合併為較低頻率的更新。換行和播放控制立即更新。"
           }
         }
       }

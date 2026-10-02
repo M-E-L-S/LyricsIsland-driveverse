@@ -73,6 +73,22 @@ import Foundation
         else { Issue.record("Flush failed to consume budget"); return }
     }
 
+    @Test func classicRestoresOriginalWordRateWithoutRaisingFillOrLineRates() {
+        for effect in LiveLyricsWordEffect.allCases {
+            let interval = LiveLyricsAnimationTiming.updateInterval(wordUpdatesEnabled: true, wordEffect: effect)
+            var throttle = LiveActivityUpdateThrottle(minInterval: interval)
+            var sent = 0
+            // The original 250 ms sync clock supplies changing word indices.
+            for tick in 0...4 {
+                if throttle.decide(critical: false, now: t0.addingTimeInterval(Double(tick) * 0.25)) == .sendNow {
+                    sent += 1
+                }
+            }
+            #expect(sent == (effect == .classic ? 5 : 3))
+            #expect(LiveLyricsAnimationTiming.updateInterval(wordUpdatesEnabled: false, wordEffect: effect) == 0.5)
+        }
+    }
+
     /// Stress: a 60 s chorus with a line change every 0.4 s. Sends must never
     /// be closer than the interval, and the newest line must always land via
     /// the trailing edge — nothing may starve.

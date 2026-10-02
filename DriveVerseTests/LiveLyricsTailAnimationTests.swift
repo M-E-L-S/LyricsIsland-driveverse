@@ -63,4 +63,24 @@ import Testing
         #expect(abs(end.lift) < 0.000001 && abs(end.glow) < 0.000001)
         #expect(peak.illumination == 0)
     }
+
+    @Test func lockScreenLiftIsSubtleAndNeverBypassesTheFillMask() throws {
+        for usesLetters in [false, true] {
+            for index in 0..<6 {
+                for frame in 0...100 {
+                    let motion = LiveLyricsTailAnimation.motion(progress: Double(frame) / 100,
+                        letterIndex: index, letterCount: 6, usesLetterMotion: usesLetters)
+                    #expect(motion.lift >= 0 && motion.lift <= 2.000001)
+                    #expect(motion.illumination == 0)
+                    if frame == 100 {
+                        #expect(abs(motion.lift) < 0.000001 && abs(motion.glow) < 0.000001)
+                    }
+                }
+            }
+        }
+        let word = try #require(LiveLyricsTailWord.make(characterStart: 2, startMs: 800, endMs: 3_200))
+        #expect(!LiveLyricsTailAnimation.showsFilledTail(target: 0, word: word))
+        #expect(!LiveLyricsTailAnimation.showsFilledTail(target: 2, word: word))
+        #expect(LiveLyricsTailAnimation.showsFilledTail(target: 2.1, word: word))
+    }
 }

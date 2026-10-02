@@ -69,7 +69,7 @@ struct SettingsView: View {
             } header: {
                 Text("Live Activity")
             } footer: {
-                Text("Choose classic three-color highlighting or progressive fill for word lyrics. Ordinary Live Activity updates are combined, at most twice per second; line changes, initial fill and playback controls update immediately.")
+                Text("Classic three colors updates as words change. Progressive fill uses combined, lower-frequency updates. Line changes and playback controls update immediately.")
             }
 
             Section {
