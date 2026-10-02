@@ -31,9 +31,11 @@ enum LiveLyricsAnimationTiming {
     /// Advance only the line lookup; word timing continues on the audio clock.
     static func lineTriggerLeadMs(wordUpdatesEnabled: Bool,
                                   lineEffect: LiveLyricsLineEffect) -> Int {
-        let duration = !wordUpdatesEnabled && lineEffect == .particles
-            ? LiveLyricsParticlePhysics.settlingDuration : lineTransitionDuration
-        return Int(((duration + 0.15) * 1_000).rounded())
+        if !wordUpdatesEnabled && lineEffect == .particles {
+            // Start 200 ms later; keep the particle spring itself unchanged.
+            return 1_150
+        }
+        return Int(((lineTransitionDuration + 0.15) * 1_000).rounded())
     }
 }
 
