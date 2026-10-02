@@ -288,6 +288,8 @@ struct SyncedLyricsView: View {
     @State private var followsPlayback = true
     @State private var resumeFollowingTask: Task<Void, Never>?
     @State private var rowPositions: [Int: CGFloat] = [:]
+    @State private var rowHeights: [Int: CGFloat] = [:]
+    @State private var breatherPositions: [Int: CGFloat] = [:]
     @State private var pullOffsets: [Int: CGFloat] = [:]
     @State private var pullVelocities: [Int: CGFloat] = [:]
     @State private var pullOrigin = 0
@@ -331,6 +333,8 @@ struct SyncedLyricsView: View {
                                         key: LyricRowPositionKey.self,
                                         value: [index: geometry.frame(in: .named("lyricScrollContent")).minY]
                                     )
+                                    .preference(key: LyricRowHeightKey.self,
+                                                value: [index: geometry.size.height])
                                 }
                             }
                             .modifier(OneWayLyricPull(
@@ -352,6 +356,14 @@ struct SyncedLyricsView: View {
                                     playback: playback,
                                     timingOffsetMs: timingOffsetMs
                                 )
+                                .background {
+                                    GeometryReader { geometry in
+                                        Color.clear.preference(
+                                            key: BreathingRowPositionKey.self,
+                                            value: [index: geometry.frame(in: .named("lyricScrollContent")).minY]
+                                        )
+                                    }
+                                }
                                 .modifier(OneWayLyricPull(
                                     lineIndex: index,
                                     originIndex: pullOrigin,
@@ -377,6 +389,16 @@ struct SyncedLyricsView: View {
                     return
                 }
                 rowPositions.merge(positions) { _, new in new }
+            }
+            .onPreferenceChange(BreathingRowPositionKey.self) { positions in
+                if let pullStartedAt,
+                   Date().timeIntervalSince(pullStartedAt) < pullTiming.totalDuration {
+                    return
+                }
+                breatherPositions.merge(positions) { _, new in new }
+            }
+            .onPreferenceChange(LyricRowHeightKey.self) { heights in
+                rowHeights.merge(heights) { _, new in new }
             }
             .mask {
                 LinearGradient(
@@ -409,7 +431,19 @@ struct SyncedLyricsView: View {
                 if followedIndex == newIndex { return }
                 if let followedIndex, newIndex < followedIndex,
                    let oldIndex, newIndex >= oldIndex { return }
-                advanceFollow(to: newIndex, using: proxy)
+                let timing = LyricPullTiming.forLine(newIndex, in: lines)
+                if let playback, playback.isPlaying,
+                   newIndex == (oldIndex ?? -1) + 1 {
+                    let position = SyncEngine.extrapolatedPositionMs(anchor: playback, at: Date()) - timingOffsetMs
+                    // A provider's line timestamp can precede its first word.
+                    // Let the scheduled destination finish just before that word.
+                    if position < timing.advanceStartTimeMs(to: newIndex, in: lines) { return }
+                    let remaining = LyricPullTiming.firstPlaybackTimeMs(for: lines[newIndex]) - position
+                    advanceFollow(to: newIndex, using: proxy,
+                                  timing: timing.fittingBeforeFirstGlyph(remainingMs: remaining))
+                } else {
+                    advanceFollow(to: newIndex, using: proxy)
+                }
             }
             .task(id: followSchedule) { await followNextLine(using: proxy) }
             .onChange(of: activeBreatherIndex) { _, lineIndex in
@@ -461,6 +495,9 @@ struct SyncedLyricsView: View {
     }
 
     private var nextFollowIndex: Int? {
+        if let currentIndex, followedIndex == nil || (followedIndex ?? -1) < currentIndex {
+            return currentIndex
+        }
         let next = (currentIndex ?? -1) + 1
         return lines.indices.contains(next) ? next : nil
     }
@@ -473,6 +510,7 @@ struct SyncedLyricsView: View {
             isPlaying: playback?.isPlaying == true,
             followsPlayback: followsPlayback,
             timingOffsetMs: timingOffsetMs,
+            targetIndex: nextFollowIndex,
             advanceStartMs: nextFollowIndex.map {
                 LyricPullTiming.forLine($0, in: lines).advanceStartTimeMs(to: $0, in: lines)
             }
@@ -511,11 +549,25 @@ struct SyncedLyricsView: View {
         let wasFocusedOnBreather = oldIndex != nil && focusedBreatherIndex == oldIndex
         focusedBreatherIndex = nil
         let nextTiming = timing ?? LyricPullTiming.forLine(newIndex, in: lines)
-        guard !reduceMotion, !wasFocusedOnBreather,
-              let oldIndex, oldIndex >= 3, newIndex == oldIndex + 1,
-              let oldY = rowPositions[oldIndex],
-              let newY = rowPositions[newIndex],
-              newY > oldY, newY - oldY < viewportHeight * 0.8 else {
+        let sourceY = oldIndex.flatMap { index in
+            wasFocusedOnBreather ? breatherPositions[index] : rowPositions[index]
+        }
+        let destinationY = rowPositions[newIndex] ?? oldIndex.flatMap { index -> CGFloat? in
+            guard newIndex == index + 1 else { return nil }
+            if wasFocusedOnBreather, let breatherY = breatherPositions[index] {
+                return breatherY + 44 + lineSpacing
+            }
+            guard let oldY = rowPositions[index], let height = rowHeights[index] else { return nil }
+            let breatherHeight: CGFloat = breathingGap(after: index) == nil ? 0 : 44 + lineSpacing
+            // The next row may still be outside LazyVStack's visible range.
+            // Its position follows from the measured completed row's height.
+            return oldY + height + lineSpacing + breatherHeight
+        }
+        guard !reduceMotion,
+              let oldIndex, newIndex == oldIndex + 1,
+              let oldY = sourceY,
+              let newY = destinationY,
+              newY > oldY else {
             pullGeneration += 1
             withTransaction(Transaction(animation: nil)) {
                 pullOffsets = [:]
@@ -528,7 +580,12 @@ struct SyncedLyricsView: View {
             return
         }
 
-        let travel = newY - oldY
+        // scrollTo aligns the same anchor within each row. Include the row
+        // height difference so wrapped/bilingual lines keep their screen position.
+        let sourceHeight: CGFloat = wasFocusedOnBreather ? 44
+            : rowHeights[oldIndex] ?? rowHeights[newIndex] ?? 0
+        let destinationHeight = rowHeights[newIndex] ?? sourceHeight
+        let travel = newY - oldY + (destinationHeight - sourceHeight) * lyricFocusAnchor.y
         let now = Date()
         let previousElapsed = pullStartedAt.map { now.timeIntervalSince($0) } ?? .infinity
         var nextOffsets: [Int: CGFloat] = [:]
@@ -539,7 +596,7 @@ struct SyncedLyricsView: View {
                 initialVelocity: pullVelocities[index] ?? 0,
                 elapsed: previousElapsed,
                 delay: pullTiming.delay(lineIndex: index, originIndex: pullOrigin),
-                settleDuration: pullTiming.settleDuration
+                settleDuration: pullTiming.settleDuration(lineIndex: index, originIndex: pullOrigin)
             )
             nextOffsets[index] = previousMotion.offset + travel
             nextVelocities[index] = previousMotion.velocity
@@ -550,7 +607,7 @@ struct SyncedLyricsView: View {
         withTransaction(Transaction(animation: nil)) {
             pullOffsets = nextOffsets
             pullVelocities = nextVelocities
-            pullOrigin = newIndex - 3
+            pullOrigin = oldIndex
             pullTiming = nextTiming
             pullProgress = 0
             pullStartedAt = now
@@ -558,6 +615,7 @@ struct SyncedLyricsView: View {
         }
         DispatchQueue.main.async {
             guard pullGeneration == generation else { return }
+            pullStartedAt = Date()
             withAnimation(.linear(duration: nextTiming.totalDuration)) {
                 pullProgress = 1
             }
@@ -679,13 +737,30 @@ private struct LyricFollowSchedule: Equatable {
     let isPlaying: Bool
     let followsPlayback: Bool
     let timingOffsetMs: Int
+    let targetIndex: Int?
     let advanceStartMs: Int?
+}
+
+private struct BreathingRowPositionKey: PreferenceKey {
+    static var defaultValue: [Int: CGFloat] = [:]
+
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+private struct LyricRowHeightKey: PreferenceKey {
+    static var defaultValue: [Int: CGFloat] = [:]
+
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        value.merge(nextValue()) { _, new in new }
+    }
 }
 
 /// Keeps each row at its previous screen position when the list advances,
 /// then lets the rows follow upward one by one. The damped response carries
 /// its velocity through short lines without reversing direction or bouncing.
-private struct OneWayLyricPull: AnimatableModifier {
+struct OneWayLyricPull: AnimatableModifier {
 
     let lineIndex: Int
     let originIndex: Int
@@ -705,7 +780,7 @@ private struct OneWayLyricPull: AnimatableModifier {
             initialVelocity: initialVelocity,
             elapsed: Double(progress) * timing.totalDuration,
             delay: timing.delay(lineIndex: lineIndex, originIndex: originIndex),
-            settleDuration: timing.settleDuration
+            settleDuration: timing.settleDuration(lineIndex: lineIndex, originIndex: originIndex)
         )
         content.offset(y: state.offset)
     }

@@ -8,18 +8,33 @@ struct LyricPullTiming {
 
     init(followDuration: Double) {
         self.followDuration = followDuration
-        stagger = followDuration * 0.04
+        stagger = followDuration * 0.08
     }
 
-    var settleDuration: Double { followDuration - 3 * stagger }
-    var totalDuration: Double { settleDuration + 7 * stagger }
+    var settleDuration: Double { followDuration - stagger }
+    private var trailingSettleDuration: Double { max(0.45, settleDuration) }
+    var totalDuration: Double {
+        max(followDuration, delay(lineIndex: 7, originIndex: 0) + trailingSettleDuration)
+    }
 
     func delay(lineIndex: Int, originIndex: Int) -> Double {
-        Double(min(7, abs(lineIndex - originIndex))) * stagger
+        let distance = min(7, max(0, lineIndex - originIndex))
+        guard distance > 0 else { return 0 }
+        let trailingSteps = Double(distance - 1)
+        // Only the destination's short release delay belongs to its deadline.
+        // Subsequent rows add 55, 65, 75... ms regardless of destination speed.
+        return stagger + trailingSteps * 0.055
+            + trailingSteps * (trailingSteps - 1) / 2 * 0.010
+    }
+
+    func settleDuration(lineIndex: Int, originIndex: Int) -> Double {
+        lineIndex > originIndex + 1 ? trailingSettleDuration : settleDuration
     }
 
     static func firstPlaybackTimeMs(for line: LyricsLine) -> Int {
-        min(line.startTimeMs, line.words?.first?.startTimeMs ?? line.startTimeMs)
+        line.words?.first {
+            !$0.original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }?.startTimeMs ?? line.startTimeMs
     }
 
     static func earliestAdvanceTimeMs(to index: Int, in lines: [LyricsLine]) -> Int? {
@@ -28,7 +43,10 @@ struct LyricPullTiming {
         let lastWord = previous.words?.last {
             !$0.original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        return max(firstPlaybackTimeMs(for: previous), lastWord?.startTimeMs ?? previous.startTimeMs)
+        let earliest = lastWord.map {
+            $0.startTimeMs + max(0, $0.endTimeMs - $0.startTimeMs) / 2
+        } ?? previous.startTimeMs
+        return max(firstPlaybackTimeMs(for: previous), earliest)
     }
 
     private static func completionMarginMs(to index: Int, in lines: [LyricsLine]) -> Int {
@@ -40,7 +58,7 @@ struct LyricPullTiming {
 
     func advanceStartTimeMs(to index: Int, in lines: [LyricsLine]) -> Int {
         let firstPlayback = Self.firstPlaybackTimeMs(for: lines[index])
-        // The destination is three rows after the pull origin, so its delay
+        // The destination is one row after the completed-line origin, so its delay
         // plus settling time is followDuration. Later rows may keep following.
         let trigger = firstPlayback - Int(ceil(followDuration * 1_000))
             - Self.completionMarginMs(to: index, in: lines)
@@ -62,7 +80,7 @@ struct LyricPullTiming {
             let windowMs = max(0, firstPlaybackTimeMs(for: lines[index]) - earliest
                 - completionMarginMs(to: index, in: lines))
             // A short final word speeds up the same pull curve instead of
-            // starting the advance while an earlier word is still playing.
+            // starting the advance before the final word reaches its midpoint.
             duration = min(duration, Double(windowMs) / 1_000)
         }
         return LyricPullTiming(followDuration: duration)
@@ -78,7 +96,7 @@ struct TailLetterMotion {
         guard let letterIndex, letterCount > 0 else {
             return TailLetterMotion(lift: 0, glow: 0, illumination: 0)
         }
-        let riseDuration = 0.24
+        let riseDuration = 0.36
         let holdDuration = 0.06
         let revealSpan = letterCount > 1 ? (1 - riseDuration) / 2 : 0
         let start = Double(letterIndex) / Double(max(1, letterCount - 1)) * revealSpan
