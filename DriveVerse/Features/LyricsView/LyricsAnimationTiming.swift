@@ -4,11 +4,12 @@ struct LyricPullTiming {
     let followDuration: Double
     let stagger: Double
 
+    static let minimumFollowDuration = 0.45
     static let standard = LyricPullTiming(followDuration: 0.70)
 
     init(followDuration: Double) {
-        self.followDuration = followDuration
-        stagger = followDuration * 0.08
+        self.followDuration = max(Self.minimumFollowDuration, followDuration)
+        stagger = self.followDuration * 0.08
     }
 
     var settleDuration: Double { followDuration - stagger }
@@ -37,7 +38,7 @@ struct LyricPullTiming {
         }?.startTimeMs ?? line.startTimeMs
     }
 
-    static func earliestAdvanceTimeMs(to index: Int, in lines: [LyricsLine]) -> Int? {
+    private static func preferredAdvanceTimeMs(to index: Int, in lines: [LyricsLine]) -> Int? {
         guard index > 0 else { return nil }
         let previous = lines[index - 1]
         let lastWord = previous.words?.last {
@@ -49,11 +50,21 @@ struct LyricPullTiming {
         return max(firstPlaybackTimeMs(for: previous), earliest)
     }
 
+    static func earliestAdvanceTimeMs(to index: Int, in lines: [LyricsLine]) -> Int? {
+        guard let preferred = preferredAdvanceTimeMs(to: index, in: lines) else { return nil }
+        let latestStartForMinimum = firstPlaybackTimeMs(for: lines[index])
+            - Int(ceil(minimumFollowDuration * 1_000))
+            - completionMarginMs(to: index, in: lines)
+        // Keep the tail-word midpoint unless it would force a faster pull.
+        // In that case, start only as early as the minimum duration requires.
+        return min(preferred, latestStartForMinimum)
+    }
+
     private static func completionMarginMs(to index: Int, in lines: [LyricsLine]) -> Int {
         let firstPlayback = firstPlaybackTimeMs(for: lines[index])
-        let earliest = earliestAdvanceTimeMs(to: index, in: lines) ?? firstPlayback - 1_500
+        let earliest = preferredAdvanceTimeMs(to: index, in: lines) ?? firstPlayback - 1_500
         let window = max(0, firstPlayback - earliest)
-        return min(window, max(20, min(40, Int(Double(window) * 0.08))))
+        return max(20, min(40, Int(Double(window) * 0.08)))
     }
 
     func advanceStartTimeMs(to index: Int, in lines: [LyricsLine]) -> Int {
@@ -79,8 +90,8 @@ struct LyricPullTiming {
         if let earliest = earliestAdvanceTimeMs(to: index, in: lines) {
             let windowMs = max(0, firstPlaybackTimeMs(for: lines[index]) - earliest
                 - completionMarginMs(to: index, in: lines))
-            // A short final word speeds up the same pull curve instead of
-            // starting the advance before the final word reaches its midpoint.
+            // Use the available tail-word window; the minimum duration can
+            // move its start earlier instead of compressing the pull further.
             duration = min(duration, Double(windowMs) / 1_000)
         }
         return LyricPullTiming(followDuration: duration)
@@ -96,7 +107,7 @@ struct TailLetterMotion {
         guard let letterIndex, letterCount > 0 else {
             return TailLetterMotion(lift: 0, glow: 0, illumination: 0)
         }
-        let riseDuration = 0.36
+        let riseDuration = 0.48
         let holdDuration = 0.06
         let revealSpan = letterCount > 1 ? (1 - riseDuration) / 2 : 0
         let start = Double(letterIndex) / Double(max(1, letterCount - 1)) * revealSpan

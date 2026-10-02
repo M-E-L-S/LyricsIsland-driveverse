@@ -531,8 +531,8 @@ struct SyncedLyricsView: View {
             return
         }
         guard !Task.isCancelled, followsPlayback, followedIndex != nextIndex else { return }
-        // If the main thread wakes late, fit the same animation curve into
-        // the time still available before the first glyph is sung.
+        // Adapt to the time available before the first glyph while preserving
+        // the minimum pull duration, including after a late wake or resume.
         let latestPosition = SyncEngine.extrapolatedPositionMs(anchor: playback, at: Date()) - timingOffsetMs
         let remainingMs = LyricPullTiming.firstPlaybackTimeMs(for: lines[nextIndex]) - latestPosition
         let fittedTiming = timing.fittingBeforeFirstGlyph(remainingMs: remainingMs)
