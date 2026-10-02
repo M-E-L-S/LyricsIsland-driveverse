@@ -27,6 +27,14 @@ enum LiveLyricsAnimationTiming {
     // Activity.update completion is not a display acknowledgement. Leave a
     // short render allowance after the transition before sending its endpoint.
     static let lineFillStartDelay: TimeInterval = lineTransitionDuration + 0.15
+
+    /// Advance only the line lookup; word timing continues on the audio clock.
+    static func lineTriggerLeadMs(wordUpdatesEnabled: Bool,
+                                  lineEffect: LiveLyricsLineEffect) -> Int {
+        let duration = !wordUpdatesEnabled && lineEffect == .particles
+            ? LiveLyricsParticlePhysics.settlingDuration : lineTransitionDuration
+        return Int(((duration + 0.15) * 1_000).rounded())
+    }
 }
 
 #if canImport(ActivityKit) && os(iOS)

@@ -35,7 +35,10 @@ final class SyncEngine {
     private(set) var displayOptions = LyricsDisplayOptions()
     private(set) var offsetMs = 0
     let positionSubject = CurrentValueSubject<LyricsPosition?, Never>(nil)
+    let liveActivityPositionSubject = CurrentValueSubject<LyricsPosition?, Never>(nil)
     private var timer: AnyCancellable?
+    private var liveActivityBoundaryTask: Task<Void, Never>?
+    private var liveActivityLineLeadMs = 0
 
     init(now: @escaping () -> Date = Date.init) {
         self.now = now
@@ -54,6 +57,11 @@ final class SyncEngine {
     /// Positive values delay lyrics; negative values show them earlier.
     func setOffsetMs(_ value: Int) {
         offsetMs = min(5_000, max(-5_000, value))
+        tick()
+    }
+
+    func setLiveActivityLineLeadMs(_ value: Int) {
+        liveActivityLineLeadMs = max(0, value)
         tick()
     }
 
@@ -82,15 +90,21 @@ final class SyncEngine {
         timer = Timer.publish(every: Self.tickInterval, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.tick() }
+        tick()
     }
 
     func stopTicking() {
         timer = nil
+        liveActivityBoundaryTask?.cancel()
+        liveActivityBoundaryTask = nil
     }
 
     func tick() {
+        liveActivityBoundaryTask?.cancel()
+        liveActivityBoundaryTask = nil
         guard let anchor else {
             positionSubject.send(nil)
+            liveActivityPositionSubject.send(nil)
             return
         }
         let pos = Self.extrapolatedPositionMs(anchor: anchor, at: now())
@@ -99,6 +113,25 @@ final class SyncEngine {
             durationMs: anchor.durationMs, isPlaying: anchor.isPlaying,
             displayOptions: displayOptions, offsetMs: offsetMs
         ))
+        liveActivityPositionSubject.send(Self.position(
+            atMs: pos, lines: lines,
+            durationMs: anchor.durationMs, isPlaying: anchor.isPlaying,
+            displayOptions: displayOptions, offsetMs: offsetMs,
+            lineLookaheadMs: liveActivityLineLeadMs
+        ))
+        // Fire at the transition boundary itself, rather than waiting up to
+        // another 250 ms for the regular playback sample.
+        if timer != nil, anchor.isPlaying,
+           let deadline = Self.nextLiveActivityRefreshMs(
+               at: max(0, pos - offsetMs), lines: lines, leadMs: liveActivityLineLeadMs
+           ) {
+            let delayMs = max(1, deadline - max(0, pos - offsetMs))
+            liveActivityBoundaryTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(delayMs))
+                guard !Task.isCancelled else { return }
+                self?.tick()
+            }
+        }
     }
 
     // MARK: - Pure helpers
@@ -136,10 +169,20 @@ final class SyncEngine {
         durationMs: Int?,
         isPlaying: Bool,
         displayOptions: LyricsDisplayOptions = LyricsDisplayOptions(),
-        offsetMs: Int = 0
+        offsetMs: Int = 0,
+        lineLookaheadMs: Int = 0
     ) -> LyricsPosition {
         let lyricPositionMs = max(0, pos - offsetMs)
-        let index = lineIndex(forPositionMs: lyricPositionMs, in: lines)
+        let actualIndex = lineIndex(forPositionMs: lyricPositionMs, in: lines)
+        let lookaheadMs = isPlaying ? max(0, lineLookaheadMs) : 0
+        var index = actualIndex
+        let upcoming = actualIndex.map { $0 + 1 } ?? 0
+        // Only the immediately upcoming line can advance. A long effect must
+        // not skip several short lyric lines in one lookahead window.
+        if lookaheadMs > 0, lines.indices.contains(upcoming),
+           lines[upcoming].startTimeMs <= lyricPositionMs + lookaheadMs {
+            index = upcoming
+        }
         let currentLine = index.map { LyricsTextRenderer.primary(for: lines[$0], options: displayOptions) }
         let currentSecondaryLine = index.flatMap {
             LyricsTextRenderer.secondary(for: lines[$0], options: displayOptions)
@@ -158,7 +201,7 @@ final class SyncEngine {
         }
         let currentWordIndex = currentWords?.lastIndex {
             lyricPositionMs >= $0.startTimeMs
-        }
+        } ?? (lookaheadMs > 0 && currentWords?.isEmpty == false ? 0 : nil)
         let nextIndex: Int?
         if let index {
             nextIndex = index + 1 < lines.count ? index + 1 : nil
@@ -196,5 +239,17 @@ final class SyncEngine {
             lineProgress: lineProgress, trackProgress: trackProgress,
             isPlaying: isPlaying
         )
+    }
+
+    /// Once the next line has been prepared, refresh at its real timestamp too
+    /// so the following line can be scheduled without delaying its boundary.
+    static func nextLiveActivityRefreshMs(at positionMs: Int, lines: [LyricsLine],
+                                         leadMs: Int) -> Int? {
+        let current = lineIndex(forPositionMs: positionMs, in: lines)
+        let upcoming = current.map { $0 + 1 } ?? 0
+        guard lines.indices.contains(upcoming) else { return nil }
+        let start = lines[upcoming].startTimeMs
+        let trigger = start - max(0, leadMs)
+        return trigger > positionMs ? trigger : start
     }
 }

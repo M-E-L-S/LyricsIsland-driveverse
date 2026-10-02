@@ -64,6 +64,7 @@ final class AppModel: ObservableObject {
             defaults.set(liveActivityWordUpdatesEnabled, forKey: Self.liveActivityWordUpdatesKey)
 #if os(iOS)
             liveActivity.wordUpdatesEnabled = liveActivityWordUpdatesEnabled
+            syncEngine.setLiveActivityLineLeadMs(liveActivityLineLeadMs)
             syncLiveActivity()
 #endif
         }
@@ -73,6 +74,7 @@ final class AppModel: ObservableObject {
             defaults.set(liveActivityLineEffect.rawValue, forKey: Self.liveActivityLineEffectKey)
 #if os(iOS)
             liveActivity.lineEffect = liveActivityLineEffect
+            syncEngine.setLiveActivityLineLeadMs(liveActivityLineLeadMs)
             syncLiveActivity()
 #endif
         }
@@ -155,6 +157,13 @@ final class AppModel: ObservableObject {
 
     var playbackAnchor: NowPlayingState? { syncEngine.anchor }
 
+    private var liveActivityLineLeadMs: Int {
+        LiveLyricsAnimationTiming.lineTriggerLeadMs(
+            wordUpdatesEnabled: liveActivityWordUpdatesEnabled,
+            lineEffect: liveActivityLineEffect
+        )
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         lyricsEnabled = defaults.object(forKey: Self.lyricsEnabledKey) as? Bool ?? true
@@ -188,6 +197,7 @@ final class AppModel: ObservableObject {
 
         syncEngine.setDisplayOptions(lyricsDisplayOptions)
         syncEngine.setOffsetMs(lyricsTimingOffsetMs)
+        syncEngine.setLiveActivityLineLeadMs(liveActivityLineLeadMs)
         wire(nowPlayingPublisher: applePublisher)
 
 #if os(iOS)
@@ -232,7 +242,8 @@ final class AppModel: ObservableObject {
         start()
         driveMode = true
         if lyricsEnabled {
-            liveActivity.beginSession(state: nowPlaying, position: position)
+            liveActivity.beginSession(state: nowPlaying,
+                                      position: syncEngine.liveActivityPositionSubject.value)
         }
         foregroundResync()
 #endif
@@ -328,8 +339,12 @@ final class AppModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] position in
                 self?.position = position
-                self?.syncLiveActivity()
             }
+            .store(in: &cancellables)
+
+        syncEngine.liveActivityPositionSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.syncLiveActivity() }
             .store(in: &cancellables)
 
 #if os(iOS)
@@ -381,9 +396,8 @@ final class AppModel: ObservableObject {
         syncEngine.setDisplayOptions(lyricsDisplayOptions)
     }
 
-    /// The controller's update policy dedupes the 250 ms ticks — depending on
-    /// the user's setting, only active word/line changes or line changes reach
-    /// ActivityKit. Track and playback-state changes are always immediate.
+    /// Live Activity line lookup includes the transition lead. Playback and
+    /// word positions still use the actual clock; unchanged ticks are deduped.
     private func syncLiveActivity() {
 #if os(iOS)
         guard lyricsEnabled else {
@@ -392,7 +406,9 @@ final class AppModel: ObservableObject {
         }
         var hasSyncedLyrics = false
         if case .synced = lyricsState { hasSyncedLyrics = true }
-        liveActivity.sync(state: nowPlaying, position: position, hasSyncedLyrics: hasSyncedLyrics)
+        liveActivity.sync(state: nowPlaying,
+                          position: syncEngine.liveActivityPositionSubject.value,
+                          hasSyncedLyrics: hasSyncedLyrics)
         updateKeepAlive()
 #endif
     }
