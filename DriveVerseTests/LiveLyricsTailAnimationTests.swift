@@ -82,13 +82,16 @@ import Testing
         #expect(!LiveLyricsTailAnimation.showsFilledTail(target: 2, word: word))
         #expect(LiveLyricsTailAnimation.showsFilledTail(target: 2.1, word: word))
     }
+
     @Test func normalHeldWordHasOneRiseAndOneFallWithoutLetterPhases() throws {
         let word = try #require(LiveLyricsTailWord.make(characterStart: 0, startMs: 0, endMs: 2_400))
-        #expect(LiveLyricsTailAnimation.next(word: word, at: word.position(at: 0), after: 0)
-            == .animate(progress: 0.5, durationMs: 1_056))
-        #expect(LiveLyricsTailAnimation.next(word: word, at: word.position(at: 0.5), after: 0.5)
+        guard case .animate(let peak, let duration)? = LiveLyricsTailAnimation.next(
+            word: word, at: word.position(at: 0), after: 0
+        ) else { Issue.record("Missing whole-word rise phase"); return }
+        #expect(abs(peak - 0.5) < 0.000001)
+        #expect(duration == 1_056)
+        #expect(LiveLyricsTailAnimation.next(word: word, at: word.position(at: 0.5), after: peak)
             == .animate(progress: 1, durationMs: 1_056))
         #expect(LiveLyricsTailAnimation.next(word: word, at: word.endMs, after: 1) == nil)
     }
-
 }
