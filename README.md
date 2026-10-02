@@ -20,6 +20,10 @@ Lyrics always keep their original script. When available, translations appear un
 
 ---
 
+## Project status
+
+Development and testing were accepted as complete on **2026-10-02**. See the [closure record](TODO.md) for the accepted build and the [development history](docs/DEVELOPMENT_HISTORY.md) for earlier plans.
+
 ## What it does
 
 - **Reads your current song** from Apple Music through the local MediaPlayer framework.
@@ -28,7 +32,8 @@ Lyrics always keep their original script. When available, translations appear un
 - **Preserves original lyrics** with optional translation, transliteration, Simplified/Traditional Chinese conversion, and timing offset controls.
 - **Keeps working while you drive** through a "Drive Mode" that stops iOS from freezing the app in your pocket.
 - **An immersive full-screen lyrics player** with artwork-driven color, tap-to-seek, adjustable text, and scroll-follow recovery; iPad landscape gets a dedicated artwork-and-controls column.
-- **Karaoke-style word highlighting and playback controls** in the app, expanded Dynamic Island, and lock-screen Live Activity.
+- **Karaoke-style word highlighting** in the app and lock-screen Live Activity; playback controls in the app and expanded Dynamic Island.
+- **Selectable lock-screen lyric effects:** classic three-color word highlighting or progressive fill, and original or particle transitions for line lyrics. Progressive fill enhances held final words with a subtle whole-word lift and glow.
 - **Follows the system language** with Simplified Chinese, Traditional Chinese, and English fallback.
 
 No account to make, no server, no analytics, no tracking. Everything happens on your phone.

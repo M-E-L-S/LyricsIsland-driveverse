@@ -5,7 +5,8 @@ time-synced lyrics, and displays them in the app and through a Live Activity on
 the Lock Screen, Dynamic Island, and CarPlay.
 
 Read `TODO.md` before making changes. It is the source of truth for the current
-roadmap and completed phases.
+project status and accepted delivery. Earlier plans are archived in
+`docs/DEVELOPMENT_HISTORY.md`.
 
 ## Product boundaries
 
@@ -59,9 +60,14 @@ detects seeks, and maps the position to the active lyric line.
 
 - One activity spans the listening session so background track changes remain
   updates instead of requiring a new activity request.
-- Update ActivityKit only when the track, lyric line/active word, or
-  play/pause state changes. Do not update when a sync tick leaves that state
-  unchanged.
+- Classic three-color word highlighting updates when the active word changes,
+  with a 0.2 s minimum ordinary update interval. Progressive fill archives
+  native animation endpoints; fill, held-word and marquee phases share a
+  0.5 s ordinary update interval. Line/track/playback changes and the initial
+  fill endpoint send immediately. Unchanged sync ticks do not submit updates.
+- Lock-screen held-word enhancement moves the whole provider token together,
+  with a 2-point maximum lift. Brightness must remain behind the fill mask;
+  expired animation endpoints settle without replaying a glow.
 - Keep ActivityKit content below its payload limit.
 - Drive Mode uses an explicit, low-accuracy background location session to
   keep personal sideloaded builds alive while driving. Location values are

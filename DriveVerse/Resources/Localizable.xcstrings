@@ -680,14 +680,6 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "關閉即時動態逐字更新後，可選擇原文字切換或粒子文字效果。兩種效果獨立顯示。" } }
       }
     },
-    "When enabled, DriveVerse sends aggressive word-level updates for the Lock Screen and CarPlay. Turn it off to update every Live Activity only when the lyric line changes." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "When enabled, DriveVerse sends aggressive word-level updates for the Lock Screen and CarPlay. Turn it off to update every Live Activity only when the lyric line changes." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "开启后，DriveVerse 会为锁屏和 CarPlay 激进地发送逐字更新；关闭后，所有实时活动仅在歌词换行时更新。" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "開啟後，DriveVerse 會為鎖定畫面和 CarPlay 積極傳送逐字更新；關閉後，所有即時動態只在歌詞換行時更新。" } }
-      }
-    },
     "Close lyrics" : {
       "extractionState" : "manual",
       "localizations" : {

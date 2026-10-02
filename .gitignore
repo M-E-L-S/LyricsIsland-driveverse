@@ -7,6 +7,11 @@ xcuserdata/
 DerivedData/
 *.xcresult
 
+# Local build and unsigned IPA packaging output
+/build/
+/Payload/
+/DriveVerse-unsigned.ipa
+
 # macOS
 .DS_Store
 
