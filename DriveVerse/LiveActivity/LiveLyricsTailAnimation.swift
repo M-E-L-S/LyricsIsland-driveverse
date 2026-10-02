@@ -70,13 +70,11 @@ enum LiveLyricsTailAnimation {
 
     /// Lock-screen motion is subtle; brightness remains exclusively owned by
     /// the native fill mask, never by a second unmasked illumination layer.
-    static func motion(progress: Double, letterIndex: Int?, letterCount: Int,
-                       usesLetterMotion: Bool) -> TailLetterMotion {
-        let motion = usesLetterMotion
-            ? TailLetterMotion.state(progress: progress, letterIndex: letterIndex, letterCount: letterCount)
-            : wholeWordMotion(progress: progress)
-        return TailLetterMotion(lift: motion.lift * maximumLift / 6.2,
-                                glow: motion.glow, illumination: 0)
+    static func motion(progress: Double) -> TailLetterMotion {
+        let progress = min(1, max(0, progress))
+        let wave = max(0, sin(progress * .pi))
+        return TailLetterMotion(lift: maximumLift * pow(wave, 1.3),
+                                glow: 0.88 * pow(wave, 1.2), illumination: 0)
     }
 
     static func showsFilledTail(target: Double, word: LiveLyricsTailWord) -> Bool {
@@ -97,9 +95,10 @@ enum LiveLyricsTailAnimation {
         let current = word.progress(at: positionMs)
         if previousTarget >= 1 { return nil }
         var end = word.endMs
-        // Peak/hold/descent landmarks from TailLetterMotion. Combine very
-        // short phases to keep the archived view tree's update rate bounded.
-        for landmark in [0.48, 0.74, 1.0] {
+        // The whole word rises to one peak, then returns to its baseline.
+        // Keep a single endpoint per half unless the system duration cap
+        // requires an intermediate endpoint for a very long held word.
+        for landmark in [0.5, 1.0] {
             let candidate = word.position(at: landmark)
             if landmark > max(current, previousTarget), candidate - positionMs >= 180 {
                 end = candidate
@@ -114,10 +113,4 @@ enum LiveLyricsTailAnimation {
         return .animate(progress: target, durationMs: max(1, end - positionMs))
     }
 
-    static func wholeWordMotion(progress: Double) -> TailLetterMotion {
-        let progress = min(1, max(0, progress))
-        let wave = max(0, sin(progress * .pi))
-        return TailLetterMotion(lift: 6.2 * pow(wave, 1.3),
-                                glow: 0.88 * pow(wave, 1.2), illumination: 0)
-    }
 }

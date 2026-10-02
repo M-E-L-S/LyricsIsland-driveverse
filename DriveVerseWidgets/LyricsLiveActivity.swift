@@ -367,33 +367,30 @@ private struct LiveWordText: View {
 #if canImport(UIKit)
             if let tail = tailGeometry(size: geometry.size) {
                 let rows = fillRows(size: geometry.size)
-                ForEach(tail.slices) { slice in
-                    let motion = LiveLyricsTailAnimation.motion(progress: state.tailProgress ?? 0,
-                        letterIndex: slice.letterIndex, letterCount: tail.letterCount,
-                        usesLetterMotion: tail.usesLetterMotion)
-                    ZStack(alignment: .topLeading) {
-                        Text(state.fullLine).foregroundStyle(baseColor)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Text(state.fullLine).foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .mask { renderFillMask(rows: rows, size: geometry.size) }
-                            .shadow(color: .white.opacity(motion.glow * 0.72), radius: 7)
-                            .shadow(color: .white.opacity(motion.glow * 0.32), radius: 0)
-                            .opacity(state.tailWord.map {
-                                LiveLyricsTailAnimation.showsFilledTail(target: state.fillTarget, word: $0)
-                            } == true ? 1 : 0)
-                    }
-                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
-                    .mask {
-                        Rectangle().fill(.white)
-                            .frame(width: slice.bounds.width, height: slice.bounds.height)
-                            .position(x: slice.bounds.midX, y: slice.bounds.midY)
-                    }
-                    .offset(y: -CGFloat(motion.lift))
-                    .animation(nil, value: state.marqueeIdentity)
-                    .animation(nil, value: geometry.size)
-                    .animation(state.tailAnimation, value: state.tailProgress)
+                let motion = LiveLyricsTailAnimation.motion(progress: state.tailProgress ?? 0)
+                ZStack(alignment: .topLeading) {
+                    Text(state.fullLine).foregroundStyle(baseColor)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(state.fullLine).foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .mask { renderFillMask(rows: rows, size: geometry.size) }
+                        .shadow(color: .white.opacity(motion.glow * 0.72), radius: 7)
+                        .shadow(color: .white.opacity(motion.glow * 0.32), radius: 0)
+                        .opacity(state.tailWord.map {
+                            LiveLyricsTailAnimation.showsFilledTail(target: state.fillTarget, word: $0)
+                        } == true ? 1 : 0)
                 }
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+                .mask {
+                    Path { path in
+                        for bounds in tail.wordBounds { path.addRect(bounds) }
+                    }
+                    .fill(.white)
+                }
+                .offset(y: -CGFloat(motion.lift))
+                .animation(nil, value: state.marqueeIdentity)
+                .animation(nil, value: geometry.size)
+                .animation(state.tailAnimation, value: state.tailProgress)
                 .accessibilityHidden(true)
             }
 #endif

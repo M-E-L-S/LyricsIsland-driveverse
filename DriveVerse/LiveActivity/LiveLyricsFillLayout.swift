@@ -1,23 +1,14 @@
 #if canImport(UIKit)
 import UIKit
-import CoreText
 
 struct LiveLyricsFillRow {
     let bounds: CGRect
     let filledWidth: CGFloat
 }
 
-struct LiveLyricsTailSlice: Identifiable {
-    let id: Int
-    let bounds: CGRect
-    let letterIndex: Int?
-}
-
+/// Rectangles cover the entire held token, including any wrapped rows.
 struct LiveLyricsTailGeometry {
     let wordBounds: [CGRect]
-    let slices: [LiveLyricsTailSlice]
-    let letterCount: Int
-    let usesLetterMotion: Bool
 }
 
 /// Measures mask endpoints at archive time. The visible text is still laid out
@@ -110,70 +101,8 @@ enum LiveLyricsFillLayout {
                                          width: right - left, height: rowHeight))
             }
         }
-        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        let letterCount = trimmed.unicodeScalars.filter { CharacterSet.letters.contains($0) }.count
-        let letterMotion = token.unicodeScalars.allSatisfy(\.isASCII) && !trimmed.isEmpty
-            && letterCount > 0 && trimmed.unicodeScalars.allSatisfy {
-                CharacterSet.letters.contains($0) || CharacterSet.punctuationCharacters.contains($0)
-            }
         guard !wordBounds.isEmpty else { return nil }
-        if !letterMotion {
-            return LiveLyricsTailGeometry(wordBounds: wordBounds,
-                slices: wordBounds.enumerated().map {
-                    LiveLyricsTailSlice(id: $0.offset, bounds: $0.element, letterIndex: nil)
-                }, letterCount: 0, usesLetterMotion: false)
-        }
-        var slices: [LiveLyricsTailSlice] = []
-        var utf16 = prefix
-        var letter = 0
-        // CoreText caret positions split ligatures without reshaping each letter.
-        // Use each wrapped fragment's shaped line and preserve its native width.
-        for (index, character) in token.enumerated() {
-            let value = String(character)
-            let isLetter = value.unicodeScalars.allSatisfy { CharacterSet.letters.contains($0) }
-            let characterRange = NSRange(location: utf16, length: value.utf16.count)
-            for (row, fragment) in measured.fragments.enumerated() {
-                let fragmentRange = measured.manager.characterRange(forGlyphRange: fragment.glyphs,
-                                                                     actualGlyphRange: nil)
-                guard NSIntersectionRange(characterRange, fragmentRange).length > 0 else { continue }
-                let line = CTLineCreateWithAttributedString(measured.storage.attributedSubstring(from: fragmentRange))
-                let width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
-                let origin = rightToLeft ? size.width - width : 0
-                let start = origin + CTLineGetOffsetForStringIndex(line, utf16 - fragmentRange.location, nil)
-                let end = origin + CTLineGetOffsetForStringIndex(line,
-                    utf16 + value.utf16.count - fragmentRange.location, nil)
-                let left = max(0, min(start, end))
-                let right = min(size.width, max(start, end))
-                if right > left {
-                    slices.append(LiveLyricsTailSlice(id: index,
-                        bounds: CGRect(x: left, y: CGFloat(row) * rowHeight,
-                                       width: right - left, height: rowHeight),
-                        letterIndex: isLetter ? letter : nil))
-                }
-            }
-            utf16 += value.utf16.count
-            if isLetter { letter += 1 }
-        }
-        // The removed static ink and the moving slices must cover identical
-        // areas, including glyph overhang at the word's outer edges.
-        var coveredBounds: [CGRect] = []
-        for bounds in wordBounds {
-            let indices = slices.indices.filter { slices[$0].bounds.minY == bounds.minY }
-                .sorted { slices[$0].bounds.minX < slices[$1].bounds.minX }
-            guard let first = indices.first, let last = indices.last else { continue }
-            for index in indices {
-                let slice = slices[index]
-                let left = index == first ? min(bounds.minX, slice.bounds.minX) : slice.bounds.minX
-                let right = index == last ? max(bounds.maxX, slice.bounds.maxX) : slice.bounds.maxX
-                slices[index] = LiveLyricsTailSlice(id: slice.id,
-                    bounds: CGRect(x: left, y: slice.bounds.minY, width: right - left, height: rowHeight),
-                    letterIndex: slice.letterIndex)
-            }
-            coveredBounds.append(slices[first].bounds.union(slices[last].bounds))
-        }
-        guard !coveredBounds.isEmpty else { return nil }
-        return LiveLyricsTailGeometry(wordBounds: coveredBounds, slices: slices,
-                                      letterCount: letterCount, usesLetterMotion: true)
+        return LiveLyricsTailGeometry(wordBounds: wordBounds)
     }
 
     private static func measurement(text: String, size: CGSize, font: UIFont,

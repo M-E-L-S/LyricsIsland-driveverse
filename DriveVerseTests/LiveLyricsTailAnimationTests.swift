@@ -21,9 +21,9 @@ import Testing
             word: word, at: 1_144, after: 0
         ) else { Issue.record("Missing held-word lift"); return }
         #expect(duration >= 180 && duration <= 2_000)
-        let first = TailLetterMotion.state(progress: progress, letterIndex: 0, letterCount: 6)
-        #expect(first.lift > 6)
-        #expect(first.glow > 0.8)
+        let peak = LiveLyricsTailAnimation.motion(progress: progress)
+        #expect(peak.lift > 1.99)
+        #expect(peak.glow > 0.87)
     }
 
     @Test func delayedEndpointsStayMonotonicAndWithinSystemDurationLimit() throws {
@@ -53,29 +53,28 @@ import Testing
         }
     }
 
-    @Test func nonLatinTailRisesGlowsAndReturnsToBaseline() {
-        let start = LiveLyricsTailAnimation.wholeWordMotion(progress: 0)
-        let peak = LiveLyricsTailAnimation.wholeWordMotion(progress: 0.5)
-        let end = LiveLyricsTailAnimation.wholeWordMotion(progress: 1)
+    @Test func wholeWordRisesGlowsAndReturnsToBaseline() {
+        let start = LiveLyricsTailAnimation.motion(progress: 0)
+        let peak = LiveLyricsTailAnimation.motion(progress: 0.5)
+        let end = LiveLyricsTailAnimation.motion(progress: 1)
         #expect(start.lift == 0 && start.glow == 0)
-        #expect(abs(peak.lift - 6.2) < 0.000001)
+        #expect(abs(peak.lift - 2) < 0.000001)
         #expect(abs(peak.glow - 0.88) < 0.000001)
         #expect(abs(end.lift) < 0.000001 && abs(end.glow) < 0.000001)
         #expect(peak.illumination == 0)
     }
 
     @Test func lockScreenLiftIsSubtleAndNeverBypassesTheFillMask() throws {
-        for usesLetters in [false, true] {
-            for index in 0..<6 {
-                for frame in 0...100 {
-                    let motion = LiveLyricsTailAnimation.motion(progress: Double(frame) / 100,
-                        letterIndex: index, letterCount: 6, usesLetterMotion: usesLetters)
-                    #expect(motion.lift >= 0 && motion.lift <= 2.000001)
-                    #expect(motion.illumination == 0)
-                    if frame == 100 {
-                        #expect(abs(motion.lift) < 0.000001 && abs(motion.glow) < 0.000001)
-                    }
-                }
+        for frame in 0...100 {
+            let progress = Double(frame) / 100
+            let motion = LiveLyricsTailAnimation.motion(progress: progress)
+            let mirrored = LiveLyricsTailAnimation.motion(progress: 1 - progress)
+            #expect(motion.lift >= 0 && motion.lift <= 2.000001)
+            #expect(motion.illumination == 0)
+            #expect(abs(motion.lift - mirrored.lift) < 0.000001)
+            #expect(abs(motion.glow - mirrored.glow) < 0.000001)
+            if frame == 100 {
+                #expect(abs(motion.lift) < 0.000001 && abs(motion.glow) < 0.000001)
             }
         }
         let word = try #require(LiveLyricsTailWord.make(characterStart: 2, startMs: 800, endMs: 3_200))
@@ -83,4 +82,13 @@ import Testing
         #expect(!LiveLyricsTailAnimation.showsFilledTail(target: 2, word: word))
         #expect(LiveLyricsTailAnimation.showsFilledTail(target: 2.1, word: word))
     }
+    @Test func normalHeldWordHasOneRiseAndOneFallWithoutLetterPhases() throws {
+        let word = try #require(LiveLyricsTailWord.make(characterStart: 0, startMs: 0, endMs: 2_400))
+        #expect(LiveLyricsTailAnimation.next(word: word, at: word.position(at: 0), after: 0)
+            == .animate(progress: 0.5, durationMs: 1_056))
+        #expect(LiveLyricsTailAnimation.next(word: word, at: word.position(at: 0.5), after: 0.5)
+            == .animate(progress: 1, durationMs: 1_056))
+        #expect(LiveLyricsTailAnimation.next(word: word, at: word.endMs, after: 1) == nil)
+    }
+
 }
