@@ -497,8 +497,7 @@ struct SyncedLyricsView: View {
         // the time still available before the first glyph is sung.
         let latestPosition = SyncEngine.extrapolatedPositionMs(anchor: playback, at: Date()) - timingOffsetMs
         let remainingMs = LyricPullTiming.firstPlaybackTimeMs(for: lines[nextIndex]) - latestPosition
-        let available = max(0.001, Double(remainingMs - 20) / 1_000)
-        let fittedTiming = LyricPullTiming(followDuration: min(timing.followDuration, available / 1.16))
+        let fittedTiming = timing.fittingBeforeFirstGlyph(remainingMs: remainingMs)
         advanceFollow(to: nextIndex, using: proxy, timing: fittedTiming)
     }
 
