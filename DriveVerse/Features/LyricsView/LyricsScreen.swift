@@ -297,6 +297,7 @@ struct SyncedLyricsView: View {
     @State private var pullGeneration = 0
     @State private var focusedBreatherIndex: Int?
     @State private var pendingManualSeekIndex: Int?
+    @State private var followedIndex: Int?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -308,6 +309,7 @@ struct SyncedLyricsView: View {
                                 followsPlayback = true
                                 focusedBreatherIndex = nil
                                 pendingManualSeekIndex = index
+                                followedIndex = index
                                 pullGeneration += 1
                                 withTransaction(Transaction(animation: nil)) {
                                     pullOffsets = [:]
@@ -392,6 +394,7 @@ struct SyncedLyricsView: View {
             }
             .onAppear {
                 guard let currentIndex else { return }
+                followedIndex = currentIndex
                 DispatchQueue.main.async {
                     proxy.scrollTo(currentIndex, anchor: lyricFocusAnchor)
                 }
@@ -401,67 +404,17 @@ struct SyncedLyricsView: View {
                 let isManualSeek = pendingManualSeekIndex == newIndex
                 pendingManualSeekIndex = nil
                 if isManualSeek { return }
-                let wasFocusedOnBreather = oldIndex != nil && focusedBreatherIndex == oldIndex
-                focusedBreatherIndex = nil
-                let nextTiming = LyricPullTiming.forLine(newIndex, in: lines)
-                guard !reduceMotion, !wasFocusedOnBreather,
-                      let oldIndex, oldIndex >= 3, newIndex == oldIndex + 1,
-                      let oldY = rowPositions[oldIndex],
-                      let newY = rowPositions[newIndex],
-                      newY > oldY, newY - oldY < viewportHeight * 0.8 else {
-                    pullGeneration += 1
-                    withTransaction(Transaction(animation: nil)) {
-                        pullOffsets = [:]
-                        pullVelocities = [:]
-                        pullProgress = 1
-                    }
-                    withAnimation(.smooth(duration: nextTiming.followDuration)) {
-                        proxy.scrollTo(newIndex, anchor: lyricFocusAnchor)
-                    }
-                    return
-                }
-
-                let travel = newY - oldY
-                let now = Date()
-                let previousElapsed = pullStartedAt.map { now.timeIntervalSince($0) } ?? .infinity
-                var nextOffsets: [Int: CGFloat] = [:]
-                var nextVelocities: [Int: CGFloat] = [:]
-                for index in lines.indices {
-                    let previousDelay = pullTiming.delay(
-                        lineIndex: index,
-                        originIndex: pullOrigin
-                    )
-                    let previousMotion = OneWayLyricPull.motion(
-                        initialOffset: pullOffsets[index] ?? 0,
-                        initialVelocity: pullVelocities[index] ?? 0,
-                        elapsed: previousElapsed,
-                        delay: previousDelay,
-                        settleDuration: pullTiming.settleDuration
-                    )
-                    nextOffsets[index] = previousMotion.offset + travel
-                    nextVelocities[index] = previousMotion.velocity
-                }
-
-                pullGeneration += 1
-                let generation = pullGeneration
-                withTransaction(Transaction(animation: nil)) {
-                    pullOffsets = nextOffsets
-                    pullVelocities = nextVelocities
-                    pullOrigin = newIndex - 3
-                    pullTiming = nextTiming
-                    pullProgress = 0
-                    pullStartedAt = now
-                    proxy.scrollTo(newIndex, anchor: lyricFocusAnchor)
-                }
-                DispatchQueue.main.async {
-                    guard pullGeneration == generation else { return }
-                    withAnimation(.linear(duration: nextTiming.totalDuration)) {
-                        pullProgress = 1
-                    }
-                }
+                // An advance scheduled during the previous line already put
+                // this line in place. Only seeks/unscheduled changes need work.
+                if followedIndex == newIndex { return }
+                if let followedIndex, newIndex < followedIndex,
+                   let oldIndex, newIndex >= oldIndex { return }
+                advanceFollow(to: newIndex, using: proxy)
             }
+            .task(id: followSchedule) { await followNextLine(using: proxy) }
             .onChange(of: activeBreatherIndex) { _, lineIndex in
                 guard followsPlayback, let lineIndex else { return }
+                guard followedIndex == nil || followedIndex == lineIndex else { return }
                 focusedBreatherIndex = lineIndex
                 withAnimation(.timingCurve(0.22, 0.68, 0.24, 1, duration: 1.05)) {
                     proxy.scrollTo(BreathingRowID(lineIndex: lineIndex), anchor: lyricFocusAnchor)
@@ -487,6 +440,7 @@ struct SyncedLyricsView: View {
                         followsPlayback = true
                         focusedBreatherIndex = nil
                         if let currentIndex {
+                            followedIndex = currentIndex
                             withAnimation(.snappy(duration: 0.4)) {
                                 proxy.scrollTo(currentIndex, anchor: lyricFocusAnchor)
                             }
@@ -502,6 +456,111 @@ struct SyncedLyricsView: View {
                     .padding(16)
                     .transition(.opacity.combined(with: .scale))
                 }
+            }
+        }
+    }
+
+    private var nextFollowIndex: Int? {
+        let next = (currentIndex ?? -1) + 1
+        return lines.indices.contains(next) ? next : nil
+    }
+
+    private var followSchedule: LyricFollowSchedule {
+        LyricFollowSchedule(
+            currentIndex: currentIndex,
+            capturedAt: playback?.capturedAt,
+            positionMs: playback?.positionMs,
+            isPlaying: playback?.isPlaying == true,
+            followsPlayback: followsPlayback,
+            timingOffsetMs: timingOffsetMs,
+            advanceStartMs: nextFollowIndex.map {
+                LyricPullTiming.forLine($0, in: lines).advanceStartTimeMs(to: $0, in: lines)
+            }
+        )
+    }
+
+    @MainActor
+    private func followNextLine(using proxy: ScrollViewProxy) async {
+        guard followsPlayback, let playback, playback.isPlaying,
+              let nextIndex = nextFollowIndex else { return }
+        let timing = LyricPullTiming.forLine(nextIndex, in: lines)
+        let trigger = timing.advanceStartTimeMs(to: nextIndex, in: lines)
+        let position = SyncEngine.extrapolatedPositionMs(anchor: playback, at: Date()) - timingOffsetMs
+        let waitMs = max(0, trigger - position)
+        do {
+            try await Task.sleep(nanoseconds: UInt64(waitMs) * 1_000_000)
+        } catch {
+            return
+        }
+        guard !Task.isCancelled, followsPlayback, followedIndex != nextIndex else { return }
+        // If the main thread wakes late, fit the same animation curve into
+        // the time still available before the first glyph is sung.
+        let latestPosition = SyncEngine.extrapolatedPositionMs(anchor: playback, at: Date()) - timingOffsetMs
+        let remainingMs = LyricPullTiming.firstPlaybackTimeMs(for: lines[nextIndex]) - latestPosition
+        let available = max(0.001, Double(remainingMs - 20) / 1_000)
+        let fittedTiming = LyricPullTiming(followDuration: min(timing.followDuration, available / 1.16))
+        advanceFollow(to: nextIndex, using: proxy, timing: fittedTiming)
+    }
+
+    private func advanceFollow(
+        to newIndex: Int,
+        using proxy: ScrollViewProxy,
+        timing: LyricPullTiming? = nil
+    ) {
+        let oldIndex = followedIndex
+        followedIndex = newIndex
+        let wasFocusedOnBreather = oldIndex != nil && focusedBreatherIndex == oldIndex
+        focusedBreatherIndex = nil
+        let nextTiming = timing ?? LyricPullTiming.forLine(newIndex, in: lines)
+        guard !reduceMotion, !wasFocusedOnBreather,
+              let oldIndex, oldIndex >= 3, newIndex == oldIndex + 1,
+              let oldY = rowPositions[oldIndex],
+              let newY = rowPositions[newIndex],
+              newY > oldY, newY - oldY < viewportHeight * 0.8 else {
+            pullGeneration += 1
+            withTransaction(Transaction(animation: nil)) {
+                pullOffsets = [:]
+                pullVelocities = [:]
+                pullProgress = 1
+            }
+            withAnimation(.smooth(duration: nextTiming.followDuration)) {
+                proxy.scrollTo(newIndex, anchor: lyricFocusAnchor)
+            }
+            return
+        }
+
+        let travel = newY - oldY
+        let now = Date()
+        let previousElapsed = pullStartedAt.map { now.timeIntervalSince($0) } ?? .infinity
+        var nextOffsets: [Int: CGFloat] = [:]
+        var nextVelocities: [Int: CGFloat] = [:]
+        for index in lines.indices {
+            let previousMotion = OneWayLyricPull.motion(
+                initialOffset: pullOffsets[index] ?? 0,
+                initialVelocity: pullVelocities[index] ?? 0,
+                elapsed: previousElapsed,
+                delay: pullTiming.delay(lineIndex: index, originIndex: pullOrigin),
+                settleDuration: pullTiming.settleDuration
+            )
+            nextOffsets[index] = previousMotion.offset + travel
+            nextVelocities[index] = previousMotion.velocity
+        }
+
+        pullGeneration += 1
+        let generation = pullGeneration
+        withTransaction(Transaction(animation: nil)) {
+            pullOffsets = nextOffsets
+            pullVelocities = nextVelocities
+            pullOrigin = newIndex - 3
+            pullTiming = nextTiming
+            pullProgress = 0
+            pullStartedAt = now
+            proxy.scrollTo(newIndex, anchor: lyricFocusAnchor)
+        }
+        DispatchQueue.main.async {
+            guard pullGeneration == generation else { return }
+            withAnimation(.linear(duration: nextTiming.totalDuration)) {
+                pullProgress = 1
             }
         }
     }
@@ -597,6 +656,7 @@ struct SyncedLyricsView: View {
             followsPlayback = true
             focusedBreatherIndex = nil
             if let currentIndex {
+                followedIndex = currentIndex
                 withAnimation(.snappy(duration: 0.45)) {
                     proxy.scrollTo(currentIndex, anchor: lyricFocusAnchor)
                 }
@@ -613,33 +673,14 @@ private struct LyricRowPositionKey: PreferenceKey {
     }
 }
 
-private struct LyricPullTiming {
-    let followDuration: Double
-    let stagger: Double
-
-    static let standard = LyricPullTiming(followDuration: 0.70)
-
-    init(followDuration: Double) {
-        self.followDuration = followDuration
-        stagger = followDuration * 0.04
-    }
-
-    var settleDuration: Double { followDuration - 3 * stagger }
-    var totalDuration: Double { settleDuration + 7 * stagger }
-
-    func delay(lineIndex: Int, originIndex: Int) -> Double {
-        Double(min(7, abs(lineIndex - originIndex))) * stagger
-    }
-
-    static func forLine(_ index: Int, in lines: [LyricsLine]) -> LyricPullTiming {
-        let nextIntervalMs = index + 1 < lines.count
-            ? max(0, lines[index + 1].startTimeMs - lines[index].startTimeMs)
-            : 1_500
-        // Keep the same damped curve while capping the slowest active-row
-        // follow at 0.7 seconds. Short lines may still move faster.
-        let followDuration = min(0.70, max(0.48, Double(nextIntervalMs) / 1_000 * 0.72))
-        return LyricPullTiming(followDuration: followDuration)
-    }
+private struct LyricFollowSchedule: Equatable {
+    let currentIndex: Int?
+    let capturedAt: Date?
+    let positionMs: Int?
+    let isPlaying: Bool
+    let followsPlayback: Bool
+    let timingOffsetMs: Int
+    let advanceStartMs: Int?
 }
 
 /// Keeps each row at its previous screen position when the list advances,

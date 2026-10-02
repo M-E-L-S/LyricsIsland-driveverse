@@ -144,6 +144,7 @@ private struct WordFillState {
 
 private struct ProgressiveWordFill: View {
     @Environment(\.layoutDirection) private var layoutDirection
+    @State private var wrappedTailLayout: TailLetterLayout?
 
     let text: String
     let fraction: Double
@@ -159,39 +160,42 @@ private struct ProgressiveWordFill: View {
 
     var body: some View {
         ZStack(alignment: .leading) {
+            if let tailLetterLayout {
+                let matchingWrappedLayout = wrappedTailLayout.flatMap { cached in
+                    cached.text == tailLetterLayout.text && cached.fontSize == tailLetterLayout.fontSize
+                        ? cached : nil
+                }
+                letterTailFill(matchingWrappedLayout ?? tailLetterLayout)
+                    .onGeometryChange(for: CGFloat.self) { geometry in
+                        geometry.size.width
+                    } action: { width in
+                        // Recompute only when layout width changes, never on lyric ticks.
+                        wrappedTailLayout = tailLetterLayout.fitting(width: width)
+                    }
+            } else {
+                wordFill
+            }
+        }
+        .offset(y: -(2.2 * easedLift + (tailLetterLayout == nil ? tailLift : 0)))
+    }
+
+    private var wordFill: some View {
+        ZStack(alignment: .leading) {
             Text(text)
                 .foregroundStyle(pendingColor)
 
             if fraction > 0 || isActive {
-                if isLongTail, let tailLetterLayout {
-                    letterTailFill(tailLetterLayout)
-                        .opacity(fillOnsetOpacity)
-                } else {
-                    Text(text)
-                        .foregroundStyle(fraction >= 1 ? completedColor : activeColor)
-                        .mask { fillMask }
-                        .opacity(fillOnsetOpacity)
-                }
+                Text(text)
+                    .foregroundStyle(fraction >= 1 ? completedColor : activeColor)
+                    .mask { fillMask }
+                    .opacity(fillOnsetOpacity)
             }
 
             if previewIntensity > 0 {
-                Text(text)
-                    .foregroundStyle(activeColor.opacity(previewIntensity))
-                    .mask {
-                        GeometryReader { geometry in
-                            LinearGradient(
-                                colors: [.white, .white.opacity(0.30), .clear],
-                                startPoint: layoutDirection == .rightToLeft ? .trailing : .leading,
-                                endPoint: layoutDirection == .rightToLeft ? .leading : .trailing
-                            )
-                            .frame(width: min(28, geometry.size.width * 0.58))
-                            .frame(maxWidth: .infinity,
-                                   alignment: layoutDirection == .rightToLeft ? .trailing : .leading)
-                        }
-                    }
+                previewFill
             }
 
-            if isLongTail, isActive, tailLetterLayout == nil {
+            if isLongTail, isActive {
                 Text(text)
                     .foregroundStyle(Color.white.opacity(tailGlow * 0.72))
                     .mask { fillMask }
@@ -202,7 +206,6 @@ private struct ProgressiveWordFill: View {
                     .mask { fillMask }
             }
         }
-        .offset(y: -(2.2 * easedLift + (tailLetterLayout == nil ? tailLift : 0)))
     }
 
     private func letterTailFill(_ layout: TailLetterLayout) -> some View {
@@ -210,14 +213,29 @@ private struct ProgressiveWordFill: View {
         // changing the token's width or kerning when the tail animation starts.
         ZStack(alignment: .leading) {
             ForEach(layout.slices) { slice in
-                let glow = letterGlow(for: slice, count: layout.letterCount)
-                Text(text)
-                    .foregroundStyle(fraction >= 1 ? completedColor : activeColor)
-                    .mask { fillMask }
-                    .mask { letterMask(for: slice, layout: layout) }
-                    .offset(y: -letterLift(for: slice, count: layout.letterCount))
-                    .shadow(color: .white.opacity(glow * 0.72), radius: 7)
-                    .shadow(color: .white.opacity(glow * 0.32), radius: 0)
+                let motion = TailLetterMotion.state(
+                    progress: tailProgress,
+                    letterIndex: slice.letterIndex,
+                    letterCount: layout.letterCount
+                )
+                ZStack(alignment: .leading) {
+                    Text(text)
+                        .foregroundStyle(pendingColor)
+                    Text(text)
+                        .foregroundStyle(fraction >= 1 ? completedColor : activeColor)
+                        .mask { fillMask }
+                        .opacity(fillOnsetOpacity)
+                    if previewIntensity > 0 {
+                        previewFill
+                    }
+                    Text(text)
+                        .foregroundStyle(activeColor)
+                        .opacity(motion.illumination)
+                }
+                .mask { letterMask(for: slice, layout: layout) }
+                .offset(y: -motion.lift)
+                .shadow(color: .white.opacity(motion.glow * 0.72), radius: 7)
+                .shadow(color: .white.opacity(motion.glow * 0.32), radius: 0)
             }
         }
     }
@@ -225,26 +243,30 @@ private struct ProgressiveWordFill: View {
     private func letterMask(for slice: TailLetterSlice, layout: TailLetterLayout) -> some View {
         GeometryReader { geometry in
             let scale = geometry.size.width / max(1, layout.width)
+            let verticalScale = geometry.size.height / max(1, layout.height)
             Rectangle()
                 .frame(width: max(1, (slice.end - slice.start) * scale + 1),
-                       height: geometry.size.height)
+                       height: slice.height * verticalScale)
                 .position(x: (slice.start + slice.end) * scale / 2,
-                          y: geometry.size.height / 2)
+                          y: (slice.top + slice.height / 2) * verticalScale)
         }
     }
 
-    private func letterLift(for slice: TailLetterSlice, count: Int) -> Double {
-        6.2 * pow(sin(letterPhase(for: slice, count: count) * .pi), 1.3)
-    }
-
-    private func letterGlow(for slice: TailLetterSlice, count: Int) -> Double {
-        pow(sin(letterPhase(for: slice, count: count) * .pi), 1.2) * 0.88
-    }
-
-    private func letterPhase(for slice: TailLetterSlice, count: Int) -> Double {
-        guard let letterIndex = slice.letterIndex else { return 0 }
-        let start = Double(letterIndex) / Double(max(1, count - 1)) * 0.65
-        return min(1, max(0, (tailProgress - start) / 0.35))
+    private var previewFill: some View {
+        Text(text)
+            .foregroundStyle(activeColor.opacity(previewIntensity))
+            .mask {
+                GeometryReader { geometry in
+                    LinearGradient(
+                        colors: [.white, .white.opacity(0.30), .clear],
+                        startPoint: layoutDirection == .rightToLeft ? .trailing : .leading,
+                        endPoint: layoutDirection == .rightToLeft ? .leading : .trailing
+                    )
+                    .frame(width: min(28, geometry.size.width * 0.58))
+                    .frame(maxWidth: .infinity,
+                           alignment: layoutDirection == .rightToLeft ? .trailing : .leading)
+                }
+            }
     }
 
     @ViewBuilder
@@ -309,15 +331,22 @@ private struct ProgressiveWordFill: View {
     }
 }
 
-private struct TailLetterSlice: Identifiable {
+struct TailLetterSlice: Identifiable {
     let id: Int
     let start: CGFloat
     let end: CGFloat
     let letterIndex: Int?
+    let utf16Start: Int
+    let utf16End: Int
+    var top: CGFloat = 0
+    var height: CGFloat
 }
 
-private struct TailLetterLayout {
+struct TailLetterLayout {
+    let text: String
+    let fontSize: CGFloat
     let width: CGFloat
+    let height: CGFloat
     let slices: [TailLetterSlice]
     let letterCount: Int
 
@@ -334,7 +363,7 @@ private struct TailLetterLayout {
         let letterCount = trimmed.unicodeScalars.filter {
             CharacterSet.letters.contains($0)
         }.count
-        guard (5...24).contains(letterCount) else { return nil }
+        guard letterCount > 0 else { return nil }
 
         let font = UIFont.systemFont(ofSize: fontSize, weight: .bold)
         let attributed = NSAttributedString(string: text, attributes: [.font: font])
@@ -360,12 +389,67 @@ private struct TailLetterLayout {
                 id: index,
                 start: min(start, end),
                 end: max(start, end),
-                letterIndex: isLetter ? nextLetterIndex : nil
+                letterIndex: isLetter ? nextLetterIndex : nil,
+                utf16Start: utf16Index,
+                utf16End: nextUTF16Index,
+                height: font.lineHeight
             ))
             if isLetter { nextLetterIndex += 1 }
             utf16Index = nextUTF16Index
         }
-        return TailLetterLayout(width: width, slices: slices, letterCount: letterCount)
+        return TailLetterLayout(text: text, fontSize: fontSize, width: width,
+                                height: font.lineHeight, slices: slices, letterCount: letterCount)
+#else
+        return nil
+#endif
+    }
+
+    func fitting(width availableWidth: CGFloat) -> TailLetterLayout? {
+#if canImport(UIKit)
+        guard availableWidth > 0, availableWidth < width - 0.5 else { return nil }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = 2
+        let attributed = NSAttributedString(string: text, attributes: [
+            .font: UIFont.systemFont(ofSize: fontSize, weight: .bold),
+            .paragraphStyle: paragraph
+        ])
+        let framesetter = CTFramesetterCreateWithAttributedString(attributed)
+        let frameHeight: CGFloat = 100_000
+        let path = CGPath(rect: CGRect(x: 0, y: 0, width: availableWidth, height: frameHeight),
+                          transform: nil)
+        let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), path, nil)
+        let lines = CTFrameGetLines(frame) as! [CTLine]
+        guard lines.count > 1 else { return nil }
+        var origins = Array(repeating: CGPoint.zero, count: lines.count)
+        CTFrameGetLineOrigins(frame, CFRange(location: 0, length: 0), &origins)
+        var wrappedSlices: [TailLetterSlice] = []
+        var top: CGFloat = .greatestFiniteMagnitude
+        var bottom: CGFloat = 0
+        for (index, line) in lines.enumerated() {
+            let range = CTLineGetStringRange(line)
+            var ascent: CGFloat = 0
+            var descent: CGFloat = 0
+            CTLineGetTypographicBounds(line, &ascent, &descent, nil)
+            let lineTop = frameHeight - origins[index].y - ascent
+            let lineHeight = ascent + descent
+            top = min(top, lineTop)
+            bottom = max(bottom, lineTop + lineHeight)
+            for slice in slices where slice.utf16Start >= range.location
+                && slice.utf16Start < range.location + range.length {
+                let start = CTLineGetOffsetForStringIndex(line, slice.utf16Start, nil)
+                let end = CTLineGetOffsetForStringIndex(line, slice.utf16End, nil)
+                wrappedSlices.append(TailLetterSlice(
+                    id: slice.id, start: min(start, end), end: max(start, end),
+                    letterIndex: slice.letterIndex, utf16Start: slice.utf16Start,
+                    utf16End: slice.utf16End, top: lineTop, height: lineHeight
+                ))
+            }
+        }
+        guard wrappedSlices.count == slices.count else { return nil }
+        for index in wrappedSlices.indices { wrappedSlices[index].top -= top }
+        return TailLetterLayout(text: text, fontSize: fontSize, width: availableWidth,
+                                height: max(1, bottom - top), slices: wrappedSlices,
+                                letterCount: letterCount)
 #else
         return nil
 #endif
