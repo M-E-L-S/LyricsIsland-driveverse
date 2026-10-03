@@ -6,6 +6,11 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -98,3 +103,40 @@ jobs:
           name: DriveVerse-IPA
           path: DriveVerse-unsigned.ipa
           retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download IPA
+        uses: actions/download-artifact@v4
+        with:
+          name: DriveVerse-IPA
+
+      - name: Publish release and upload IPA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          test -s DriveVerse-unsigned.ipa
+          cat > release-notes.md <<'EOF'
+          Download `DriveVerse-unsigned.ipa` below and sign it with AltStore before installing.
+          Requires iOS 26 or later. Includes the iPhone/iPad app and Live Activity extension.
+
+          下载下方的 `DriveVerse-unsigned.ipa`，使用 AltStore 签名后安装。
+          需要 iOS 26 或更高版本，包含 iPhone/iPad 应用及实时活动扩展。
+          EOF
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" DriveVerse-unsigned.ipa --clobber
+          else
+            gh release create "$RELEASE_TAG" DriveVerse-unsigned.ipa \
+              --verify-tag \
+              --title "DriveVerse $RELEASE_TAG" \
+              --notes-file release-notes.md
+          fi

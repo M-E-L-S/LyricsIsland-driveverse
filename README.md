@@ -4,6 +4,8 @@
 
 <h1 align="center">DriveVerse</h1>
 
+<p align="center">English | <a href="README.zh-CN.md">简体中文</a></p>
+
 <p align="center"><strong>Live, time-synced Apple Music lyrics on your iPhone, iPad, and CarPlay screen.</strong></p>
 
 <p align="center">
@@ -12,17 +14,17 @@
 
 <p align="center"><em>Lyrics advancing live on the lock screen. The same Live Activity mirrors onto CarPlay on iOS 26. (<a href="assets/demo.mp4">watch the clip</a>)</em></p>
 
-DriveVerse watches the song playing in Apple Music, finds the synced lyrics for it, and shows the current line (plus the one coming up) right on your CarPlay display, lock screen, and Dynamic Island. It also provides basic play/pause, previous/next, and seek controls while Apple Music remains the player.
+DriveVerse reads the song playing in Apple Music, finds synced lyrics, and shows the current line and the next line on your CarPlay display, lock screen, and Dynamic Island. It also provides basic play/pause, previous/next, and seek controls while Apple Music handles playback.
 
 Lyrics always keep their original script. When available, translations appear underneath; optional on-device transliteration can be enabled in Settings without modifying the stored original.
 
-> **A note on lyrics and copyright.** Lyrics are searched from Kugou Music, NetEase Cloud Music, and [LRCLIB](https://lrclib.net) through third-party or community interfaces. That's intended only for a personal app you build and run yourself. It is *not* okay for the App Store without properly licensed lyric providers, so please don't ship it there. Lyrics are cached only on your device, for 30 days at most.
+> **Lyrics and copyright.** The app searches Kugou Music, NetEase Cloud Music, and [LRCLIB](https://lrclib.net) through third-party or community interfaces, solely for a personal app you build and run yourself. Please do not publish it on the App Store without formal authorization from the lyric providers. Lyrics are cached only on your device, for up to 30 days.
 
 ---
 
 ## Project status
 
-Development and testing were accepted as complete on **2026-10-02**. See the [closure record](TODO.md) for the accepted build and the [development history](docs/DEVELOPMENT_HISTORY.md) for earlier plans.
+Development and testing were accepted as complete on **2026-10-02**. See the [closure record](docs/DEVELOPMENT_HISTORY.md) for the accepted build.
 
 ## What it does
 
@@ -36,7 +38,7 @@ Development and testing were accepted as complete on **2026-10-02**. See the [cl
 - **Selectable lock-screen lyric effects:** classic three-color word highlighting or progressive fill, and original or particle transitions for line lyrics. Progressive fill enhances held final words with a subtle whole-word lift and glow.
 - **Follows the system language** with Simplified Chinese, Traditional Chinese, and English fallback.
 
-No account to make, no server, no analytics, no tracking. Everything happens on your phone.
+No account, no server, no analytics, and no tracking. The app runs on your phone.
 
 ## How it works
 
@@ -52,7 +54,7 @@ A few details worth knowing:
 
 - **Staying in sync:** between updates, the app estimates the current playback position and finds the matching lyric line. If you skip or seek, it notices and snaps to the right line.
 - **Lazy matching:** the app checks Kugou → NetEase → LRCLIB in that order, tries at most three candidates per source, and stops as soon as title, artist, album, duration, the requested translation/transliteration, and word timing all match.
-- **CarPlay:** iOS 26 automatically mirrors the lock-screen Live Activity onto the car screen. There's no CarPlay entitlement and no CPTemplate code here — the Live Activity *is* the CarPlay experience.
+- **CarPlay:** iOS 26 automatically mirrors the lock-screen Live Activity onto the car screen. The project has no CarPlay entitlement or CPTemplate code; car-screen lyrics are presented through the Live Activity.
 
 ## Requirements
 
@@ -77,13 +79,15 @@ brew install xcodegen
 open DriveVerse.xcodeproj
 ```
 
-When working from Windows, push the source to GitHub instead. The included GitHub Actions workflow runs the unit tests with Xcode 27, generates the project, builds an unsigned iPhone/iPad app with its Live Activity extension, and uploads `DriveVerse-unsigned.ipa`. Download that artifact and sign it with AltStore.
+For a ready-to-sign build, download `DriveVerse-unsigned.ipa` from [Releases](https://github.com/M-E-L-S/LyricsIsland-driveverse/releases) and sign it with AltStore. The initial release is **v1.0.0**.
+
+When working from Windows, push the source to GitHub. The included GitHub Actions workflow runs the unit tests with Xcode 27, generates the project, builds an unsigned iPhone/iPad app with its Live Activity extension, and uploads an Actions artifact retained for 14 days. Pushing a `v*` version tag also automatically publishes the IPA to the corresponding GitHub Release after the build succeeds.
 
 ### 2. Sign and run
 
 For a local Mac build, open the generated project in Xcode, pick the **DriveVerse** scheme, and set your signing team on both the `DriveVerse` and `DriveVerseWidgets` targets (Signing & Capabilities tab). Plug in your iPhone or iPad and hit Run.
 
-The fork currently uses `io.github.mels.driveverse`. If signing reports that the identifier is unavailable to your team, edit `project.yml` and replace it with identifiers you control. The Live Activity extension identifier must remain a child of the app identifier:
+The current branch uses `io.github.mels.driveverse`. If signing reports that the identifier is unavailable to your team, edit `project.yml` and replace it with identifiers you can use. The Live Activity extension identifier must use the main app identifier as its prefix:
 
 ```yaml
 bundleIdPrefix: com.yourname                                 # options
@@ -97,7 +101,7 @@ Then regenerate the project or push the change and let GitHub Actions generate i
 
 - **Media & Apple Music** — needed to see what Apple Music is playing.
 - **Live Activities** — turn on **More Frequent Updates** under Settings → DriveVerse → Live Activities, or the lyrics stop updating after about 30 seconds in the background.
-- **Location (While Using)** — asked the first time you turn on Drive Mode. It's how the app stays awake in the background (explained below). Say yes to the "Always" upgrade later only if you want the hands-free CarPlay automation.
+- **Location (While Using)** — requested the first time you enable Drive Mode to keep the app running in the background, as explained below. Allow the later request for "Always" access if you want hands-free CarPlay automation.
 
 ## Using it in the car
 
@@ -113,7 +117,7 @@ You don't have to open the app every time. DriveVerse includes two Shortcuts act
 2. Pick **CarPlay** → **Connects** → **Run Immediately** → add the **Start Drive Mode** action.
 3. Make a second one: **CarPlay** → **Disconnects** → **Run Immediately** → **Stop Drive Mode**.
 
-Now getting in the car starts DriveVerse in the background and puts up the lyrics tile on its own (it shows "♪ Waiting for music…" until you press play). Leaving the car shuts it all down so nothing keeps running in the background.
+Connecting to CarPlay starts DriveVerse in the background and automatically displays the lyrics tile. It shows "♪ Waiting for music…" until music starts playing. Disconnecting from CarPlay turns off Drive Mode so it no longer keeps the app running in the background.
 
 ### Why Drive Mode needs to exist
 
@@ -123,7 +127,7 @@ Why location and not the old "play silent audio" trick? Because iOS specifically
 
 ## Privacy
 
-Everything stays on your phone. There's no backend, no account, and no analytics.
+The app runs on your phone, with no backend, account, or analytics.
 
 - Song info is read locally from Apple Music.
 - Only the basic track details (title, artist, album, length) are sent to Kugou, NetEase, and LRCLIB to look up lyrics.
@@ -143,7 +147,7 @@ It covers Apple Music state mapping, KRC/YRC/LRC parsing, bilingual word timing,
 
 ## Good to know / limitations
 
-- Without Drive Mode on, updates stop shortly after the app goes to the background. That's expected — Drive Mode is the fix.
+- Without Drive Mode enabled, updates stop shortly after the app enters the background. Enable Drive Mode to keep updates running.
 - Live Activities support buttons rather than a draggable slider, so their seek controls jump backward or forward by 15 seconds; the app itself provides a draggable timeline.
 - If none of the three sources has a usable match, you'll see "No lyrics found." Misses are re-checked the next day; hits are cached.
 - Kugou and NetEase are unofficial interfaces and may change or limit results by region. A failed source is skipped automatically.
